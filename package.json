@@ -1,0 +1,19 @@
+{
+  "name": "elearn-final",
+  "version": "1.0.0",
+  "description": "eLearning Management System using MERN stack",
+  "scripts": {
+    "dev": "concurrently \"npm run server\" \"npm run client\"",
+    "server": "cd server && npm run dev",
+    "client": "cd client && npm start",
+    "install-server": "cd server && npm install",
+    "install-client": "cd client && npm install",
+    "install-all": "npm run install-server && npm run install-client"
+  },
+  "keywords": ["elearning", "mern", "education"],
+  "author": "Your Name",
+  "license": "MIT",
+  "dependencies": {
+    "concurrently": "^7.6.0"
+  }
+}

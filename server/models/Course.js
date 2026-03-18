@@ -33,15 +33,56 @@ const courseSchema = new mongoose.Schema({
     default: 0
   },
   thumbnail: String,
-  materials: [{
+  lectures: [{
     title: String,
-    type: {
-      type: String,
-      enum: ['document', 'video', 'presentation', 'quiz', 'assignment']
-    },
-    url: String,
-    content: String,
-    order: Number
+    description: String,
+    videoUrl: String,
+    duration: Number, // in minutes
+    order: Number,
+    createdAt: {
+      type: Date,
+      default: Date.now
+    }
+  }],
+  assignments: [{
+    title: String,
+    description: String,
+    dueDate: Date,
+    attachmentUrl: String,
+    order: Number,
+    createdAt: {
+      type: Date,
+      default: Date.now
+    }
+  }],
+  tests: [{
+    title: String,
+    description: String,
+    questions: [{
+      question: String,
+      options: [String],
+      correctAnswer: String,
+      points: Number
+    }],
+    totalPoints: Number,
+    dueDate: Date,
+    order: Number,
+    createdAt: {
+      type: Date,
+      default: Date.now
+    }
+  }],
+  projects: [{
+    title: String,
+    description: String,
+    requirements: String,
+    dueDate: Date,
+    attachmentUrl: String,
+    order: Number,
+    createdAt: {
+      type: Date,
+      default: Date.now
+    }
   }],
   enrolledStudents: [{
     student: {
@@ -56,6 +97,18 @@ const courseSchema = new mongoose.Schema({
       type: String,
       enum: ['pending', 'approved', 'rejected'],
       default: 'pending'
+    }
+  }],
+  grades: [{
+    student: {
+      type: mongoose.Schema.Types.ObjectId,
+      ref: 'User'
+    },
+    grade: String,
+    feedback: String,
+    updatedAt: {
+      type: Date,
+      default: Date.now
     }
   }],
   ratings: [{

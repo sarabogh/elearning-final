@@ -24,6 +24,8 @@ const userSchema = new mongoose.Schema({
   profile: {
     avatar: String,
     bio: String,
+    title: String,           // e.g., "professor", "TA", "Senior Developer"
+    degree: String,          // e.g., "MSc Computer Science"
     skills: [String],
     experience: String
   },
@@ -43,7 +45,10 @@ const userSchema = new mongoose.Schema({
     completed: {
       type: Boolean,
       default: false
-    }
+    },
+    completedLessons: [{
+      type: mongoose.Schema.Types.ObjectId
+    }]
   }],
   createdCourses: [{
     type: mongoose.Schema.Types.ObjectId,
