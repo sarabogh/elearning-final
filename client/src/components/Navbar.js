@@ -29,6 +29,7 @@ const Navbar = () => {
   const [notificationHasMore, setNotificationHasMore] = useState(false);
   const [notificationLoadingMore, setNotificationLoadingMore] = useState(false);
   const [unreadOnly, setUnreadOnly] = useState(false);
+  const [adminPriorityNotifications, setAdminPriorityNotifications] = useState([]);
 
   const socketUrl = useMemo(() => {
     const base = process.env.REACT_APP_API_BASE_URL || 'http://localhost:5001/api';
@@ -42,13 +43,17 @@ const Navbar = () => {
     if (type === 'enrollment_approved') return { icon: '✅', label: 'Enrollment' };
     if (type === 'grade_posted') return { icon: '📝', label: 'Grade' };
     if (type === 'deadline_changed') return { icon: '⏰', label: 'Deadline' };
+    if (type === 'admin_priority') return { icon: '⚠️', label: 'Priority' };
     return { icon: '🔔', label: 'Update' };
   };
 
+  const totalUnreadCount = unreadCount + adminPriorityNotifications.length;
+
   const displayedNotifications = useMemo(() => {
-    if (!unreadOnly) return notifications;
-    return notifications.filter((item) => !item.read);
-  }, [notifications, unreadOnly]);
+    const combined = [...adminPriorityNotifications, ...notifications];
+    if (!unreadOnly) return combined;
+    return combined.filter((item) => !item.read);
+  }, [adminPriorityNotifications, notifications, unreadOnly]);
 
   const fetchNotifications = useCallback(async (page = 1, append = false) => {
     if (!user) return;
@@ -73,11 +78,81 @@ const Navbar = () => {
     if (!user) {
       setNotifications([]);
       setUnreadCount(0);
+      setAdminPriorityNotifications([]);
       return;
     }
 
     fetchNotifications(1, false);
   }, [fetchNotifications, user]);
+
+  const fetchAdminPriorityNotifications = useCallback(async () => {
+    if (!user || user.role !== 'admin') {
+      setAdminPriorityNotifications([]);
+      return;
+    }
+
+    try {
+      const [pendingCoursesRes, coursesRes] = await Promise.all([
+        api.get('/courses/catalog/pending'),
+        api.get('/courses')
+      ]);
+
+      const pendingCourses = pendingCoursesRes.data || [];
+      const allCourses = coursesRes.data || [];
+      const pendingEnrollments = allCourses.reduce((count, course) => {
+        const pendingInCourse = (course.enrolledStudents || []).filter((entry) => entry.status === 'pending').length;
+        return count + pendingInCourse;
+      }, 0);
+
+      const nowIso = new Date().toISOString();
+      const priorityItems = [];
+
+      if (pendingCourses.length > 0) {
+        priorityItems.push({
+          _id: 'admin-priority-course-approvals',
+          type: 'admin_priority',
+          title: `${pendingCourses.length} course ${pendingCourses.length === 1 ? 'approval' : 'approvals'} pending`,
+          body: 'Review and approve submitted courses to publish them in the catalog.',
+          priority: 'urgent',
+          read: false,
+          createdAt: nowIso,
+          actionRoute: '/admin'
+        });
+      }
+
+      if (pendingEnrollments > 0) {
+        priorityItems.push({
+          _id: 'admin-priority-enrollment-approvals',
+          type: 'admin_priority',
+          title: `${pendingEnrollments} student enrollment ${pendingEnrollments === 1 ? 'request' : 'requests'} pending`,
+          body: 'Review pending learner enrollment requests awaiting admin approval.',
+          priority: 'urgent',
+          read: false,
+          createdAt: nowIso,
+          actionRoute: '/admin'
+        });
+      }
+
+      setAdminPriorityNotifications(priorityItems);
+    } catch (error) {
+      setAdminPriorityNotifications([]);
+    }
+  }, [user]);
+
+  useEffect(() => {
+    if (!user || user.role !== 'admin') {
+      setAdminPriorityNotifications([]);
+      return undefined;
+    }
+
+    fetchAdminPriorityNotifications();
+
+    const intervalId = setInterval(() => {
+      fetchAdminPriorityNotifications();
+    }, 60000);
+
+    return () => clearInterval(intervalId);
+  }, [fetchAdminPriorityNotifications, user]);
 
   useEffect(() => {
     if (!user) return undefined;
@@ -135,6 +210,12 @@ const Navbar = () => {
   };
 
   const handleNotificationOpen = async (notification) => {
+    if (notification.actionRoute) {
+      closeNotifications();
+      navigate(notification.actionRoute);
+      return;
+    }
+
     if (!notification.read) {
       await markNotificationRead(notification._id);
     }
@@ -237,7 +318,7 @@ const Navbar = () => {
                 Profile
               </Button>
               <IconButton color="inherit" onClick={openNotifications} size="small" sx={{ ml: 0.5 }}>
-                <Badge badgeContent={unreadCount} color="error" max={99}>
+                <Badge badgeContent={totalUnreadCount} color="error" max={99}>
                   <Typography component="span" sx={{ fontSize: 18 }}>🔔</Typography>
                 </Badge>
               </IconButton>
@@ -290,7 +371,7 @@ const Navbar = () => {
           <Box>
             <Typography variant="subtitle2" sx={{ fontWeight: 700 }}>Notifications</Typography>
             <Typography variant="caption" color="text.secondary">
-              {unreadCount ? `${unreadCount} unread` : 'All caught up'}
+              {totalUnreadCount ? `${totalUnreadCount} unread` : 'All caught up'}
             </Typography>
           </Box>
           <Button size="small" onClick={markAllNotificationsRead} disabled={!unreadCount}>
