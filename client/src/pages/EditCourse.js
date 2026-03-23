@@ -9,7 +9,12 @@ import {
   MenuItem,
   FormControl,
   InputLabel,
-  Select
+  Select,
+  Paper,
+  Dialog,
+  DialogTitle,
+  DialogContent,
+  DialogActions
 } from '@mui/material';
 import { useNavigate, useParams } from 'react-router-dom';
 import api from '../services/api';
@@ -27,6 +32,7 @@ const EditCourse = () => {
   });
   const [error, setError] = useState('');
   const [success, setSuccess] = useState('');
+  const [deleteDialogOpen, setDeleteDialogOpen] = useState(false);
   const navigate = useNavigate();
 
   useEffect(() => {
@@ -73,32 +79,32 @@ const EditCourse = () => {
       setSuccess('Course updated successfully!');
       setTimeout(() => navigate(`/course/${id}`), 750);
     } catch (err) {
-      console.error('Update course error', err);
       setError(err.response?.data?.message || 'Could not update course');
     }
   };
 
   const handleDelete = async () => {
-    if (!window.confirm('Are you sure you want to delete this course?')) return;
-
     try {
       await api.delete(`/courses/${id}`);
+      setDeleteDialogOpen(false);
       navigate('/dashboard');
     } catch (err) {
-      console.error('Delete course error', err);
       setError(err.response?.data?.message || 'Could not delete course');
     }
   };
 
   return (
-    <Container maxWidth="sm">
-      <Box sx={{ mt: 8, display: 'flex', flexDirection: 'column', alignItems: 'center' }}>
-        <Typography component="h1" variant="h4">
+    <Container maxWidth="sm" className="fade-in">
+      <Paper sx={{ mt: 4, p: 3.5 }}>
+        <Typography component="h1" variant="h4" sx={{ textAlign: 'center' }}>
           Edit Course
+        </Typography>
+        <Typography color="text.secondary" sx={{ mt: 0.5, textAlign: 'center' }}>
+          Update course details, pricing, and metadata.
         </Typography>
         {error && <Alert severity="error" sx={{ mt: 2, width: '100%' }}>{error}</Alert>}
         {success && <Alert severity="success" sx={{ mt: 2, width: '100%' }}>{success}</Alert>}
-        <Box component="form" onSubmit={handleSubmit} sx={{ mt: 1, width: '100%' }}>
+        <Box component="form" onSubmit={handleSubmit} sx={{ mt: 2, width: '100%' }}>
           <TextField
             margin="normal"
             required
@@ -191,12 +197,25 @@ const EditCourse = () => {
             fullWidth
             color="error"
             variant="outlined"
-            onClick={handleDelete}
+            onClick={() => setDeleteDialogOpen(true)}
           >
             Delete Course
           </Button>
         </Box>
-      </Box>
+      </Paper>
+
+      <Dialog open={deleteDialogOpen} onClose={() => setDeleteDialogOpen(false)}>
+        <DialogTitle>Delete Course</DialogTitle>
+        <DialogContent>
+          <Typography>
+            Are you sure you want to delete this course? This action cannot be undone.
+          </Typography>
+        </DialogContent>
+        <DialogActions>
+          <Button onClick={() => setDeleteDialogOpen(false)}>Cancel</Button>
+          <Button color="error" variant="contained" onClick={handleDelete}>Delete</Button>
+        </DialogActions>
+      </Dialog>
     </Container>
   );
 };

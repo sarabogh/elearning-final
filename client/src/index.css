@@ -1,23 +1,133 @@
+@import url('https://fonts.googleapis.com/css2?family=Manrope:wght@400;500;600;700;800&display=swap');
+
+:root {
+  --lms-bg: #f2f6fb;
+  --lms-surface: #ffffff;
+  --lms-border: rgba(15, 76, 129, 0.14);
+  --lms-primary: #0f4c81;
+  --lms-accent: #dd6b20;
+  --lms-text: #102a43;
+  --lms-muted: #486581;
+}
+
 body {
   margin: 0;
-  font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', 'Roboto', 'Oxygen',
-    'Ubuntu', 'Cantarell', 'Fira Sans', 'Droid Sans', 'Helvetica Neue',
-    sans-serif;
+  font-family: 'Manrope', 'Segoe UI', sans-serif;
   -webkit-font-smoothing: antialiased;
   -moz-osx-font-smoothing: grayscale;
-  background: linear-gradient(180deg, #eafaf7 0%, #ffffff 65%);
+  color: var(--lms-text);
+  background:
+    radial-gradient(circle at 8% 0%, rgba(31, 122, 182, 0.15) 0%, transparent 35%),
+    radial-gradient(circle at 100% 20%, rgba(221, 107, 32, 0.12) 0%, transparent 34%),
+    linear-gradient(180deg, #f7faff 0%, var(--lms-bg) 72%);
   background-attachment: fixed;
 }
 
-/* Subtle leaf pattern background */
 body::before {
   content: '';
   position: fixed;
   inset: 0;
-  background-image: url("data:image/svg+xml,%3Csvg width='120' height='120' viewBox='0 0 120 120' xmlns='http://www.w3.org/2000/svg'%3E%3Cg fill='%2396d6c8' fill-opacity='0.15'%3E%3Cpath d='M20 60c10-20 40-20 50 0s-20 20-30 10S20 80 20 60z'/%3E%3Cpath d='M80 40c10 20 40 20 50 0s-20-20-30-10S80 20 80 40z'/%3E%3C/g%3E%3C/svg%3E");
-  opacity: 0.35;
+  background-image:
+    linear-gradient(to right, rgba(15, 76, 129, 0.04) 1px, transparent 1px),
+    linear-gradient(to bottom, rgba(15, 76, 129, 0.04) 1px, transparent 1px);
+  background-size: 32px 32px;
+  opacity: 0.5;
   pointer-events: none;
   z-index: -1;
+}
+
+* {
+  box-sizing: border-box;
+}
+
+a {
+  color: inherit;
+}
+
+.app-shell {
+  padding-bottom: 32px;
+}
+
+.page-hero {
+  background: linear-gradient(120deg, rgba(15, 76, 129, 0.97) 0%, rgba(31, 122, 182, 0.96) 58%, rgba(35, 143, 175, 0.93) 100%);
+  border: 1px solid rgba(255, 255, 255, 0.16);
+  border-radius: 18px;
+  color: #f8fbff;
+  padding: 28px;
+  margin-bottom: 22px;
+  box-shadow: 0 20px 36px rgba(15, 76, 129, 0.25);
+  position: relative;
+  overflow: hidden;
+}
+
+.page-hero::after {
+  content: '';
+  position: absolute;
+  width: 220px;
+  height: 220px;
+  border-radius: 50%;
+  background: rgba(255, 255, 255, 0.14);
+  right: -60px;
+  top: -70px;
+}
+
+.stat-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(180px, 1fr));
+  gap: 12px;
+  margin-top: 16px;
+}
+
+.stat-tile {
+  background: rgba(255, 255, 255, 0.2);
+  border: 1px solid rgba(255, 255, 255, 0.35);
+  border-radius: 12px;
+  padding: 14px;
+  backdrop-filter: blur(6px);
+}
+
+.surface-panel {
+  background: var(--lms-surface);
+  border: 1px solid var(--lms-border);
+  border-radius: 14px;
+  box-shadow: 0 10px 24px rgba(15, 76, 129, 0.06);
+}
+
+.course-card-hover:hover {
+  transform: translateY(-4px);
+  box-shadow: 0 14px 26px rgba(15, 76, 129, 0.12);
+}
+
+.fade-in {
+  animation: fade-slide-in 280ms ease;
+}
+
+@keyframes fade-slide-in {
+  from {
+    opacity: 0;
+    transform: translateY(6px);
+  }
+  to {
+    opacity: 1;
+    transform: translateY(0);
+  }
+}
+
+@media (max-width: 900px) {
+  .page-hero {
+    padding: 22px;
+  }
+}
+
+@media (max-width: 600px) {
+  .page-hero {
+    padding: 18px;
+    border-radius: 14px;
+  }
+
+  .stat-grid {
+    grid-template-columns: 1fr;
+  }
 }
 
 code {

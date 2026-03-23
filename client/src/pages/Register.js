@@ -1,5 +1,5 @@
 import React, { useState } from 'react';
-import { Container, TextField, Button, Typography, Box, Alert, FormControl, InputLabel, Select, MenuItem } from '@mui/material';
+import { Container, TextField, Button, Typography, Box, Alert, FormControl, InputLabel, Select, MenuItem, Paper } from '@mui/material';
 import { useNavigate } from 'react-router-dom';
 import api from '../services/api';
 import { useAuth } from '../context/AuthContext';
@@ -24,27 +24,26 @@ const Register = () => {
 
   const handleSubmit = async (e) => {
     e.preventDefault();
-    console.log('Register form submitted with data:', formData);
     try {
-      console.log('Making API call to /auth/register');
       const response = await api.post('/auth/register', formData);
-      console.log('Register response:', response.data);
       login(response.data);
       navigate('/dashboard');
     } catch (error) {
-      console.error('Register error:', error);
       setError(error.response?.data?.message || 'Registration failed');
     }
   };
 
   return (
-    <Container maxWidth="sm">
-      <Box sx={{ mt: 8, display: 'flex', flexDirection: 'column', alignItems: 'center' }}>
-        <Typography component="h1" variant="h4">
-          Register
+    <Container maxWidth="sm" className="fade-in">
+      <Paper sx={{ mt: 6, p: 3.5 }}>
+        <Typography component="h1" variant="h4" sx={{ textAlign: 'center' }}>
+          Create Account
+        </Typography>
+        <Typography color="text.secondary" sx={{ mt: 0.5, textAlign: 'center' }}>
+          Join as a learner, faculty member, or admin.
         </Typography>
         {error && <Alert severity="error" sx={{ mt: 2, width: '100%' }}>{error}</Alert>}
-        <Box component="form" onSubmit={handleSubmit} sx={{ mt: 1, width: '100%' }}>
+        <Box component="form" onSubmit={handleSubmit} sx={{ mt: 2, width: '100%' }}>
           <TextField
             margin="normal"
             required
@@ -101,10 +100,10 @@ const Register = () => {
             variant="contained"
             sx={{ mt: 3, mb: 2 }}
           >
-            Register
+            Create Account
           </Button>
         </Box>
-      </Box>
+      </Paper>
     </Container>
   );
 };

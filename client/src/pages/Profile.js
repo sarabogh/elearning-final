@@ -1,5 +1,5 @@
 import React, { useState, useEffect } from 'react';
-import { Container, Typography, TextField, Button, Box, Grid, Card, CardContent } from '@mui/material';
+import { Container, Typography, TextField, Button, Box, Grid, Card, CardContent, Paper } from '@mui/material';
 import api from '../services/api';
 
 const Profile = () => {
@@ -71,12 +71,18 @@ const Profile = () => {
   if (!user) return <div>Loading...</div>;
 
   return (
-    <Container maxWidth="md" sx={{ mt: 4 }}>
-      <Typography variant="h4" component="h1" gutterBottom>
-        Profile
-      </Typography>
-      
-      <Box component="form" onSubmit={handleSubmit} sx={{ mt: 2 }}>
+    <Container maxWidth="md" className="fade-in">
+      <Box className="page-hero">
+        <Typography variant="h4" component="h1" gutterBottom>
+          Profile Workspace
+        </Typography>
+        <Typography sx={{ opacity: 0.94 }}>
+          Manage your personal details and learning identity.
+        </Typography>
+      </Box>
+
+      <Paper sx={{ p: 2.5 }}>
+      <Box component="form" onSubmit={handleSubmit}>
         <Grid container spacing={3}>
           <Grid item xs={12}>
             <TextField
@@ -175,6 +181,7 @@ const Profile = () => {
           Update Profile
         </Button>
       </Box>
+      </Paper>
 
       <Typography variant="h5" sx={{ mt: 4, mb: 2 }}>
         Your Statistics

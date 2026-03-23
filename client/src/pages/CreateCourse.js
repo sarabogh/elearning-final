@@ -9,7 +9,8 @@ import {
   MenuItem,
   FormControl,
   InputLabel,
-  Select
+  Select,
+  Paper
 } from '@mui/material';
 import { useNavigate } from 'react-router-dom';
 import api from '../services/api';
@@ -64,14 +65,17 @@ const CreateCourse = () => {
   };
 
   return (
-    <Container maxWidth="sm">
-      <Box sx={{ mt: 8, display: 'flex', flexDirection: 'column', alignItems: 'center' }}>
-        <Typography component="h1" variant="h4">
+    <Container maxWidth="sm" className="fade-in">
+      <Paper sx={{ mt: 4, p: 3.5 }}>
+        <Typography component="h1" variant="h4" sx={{ textAlign: 'center' }}>
           Create Course
+        </Typography>
+        <Typography color="text.secondary" sx={{ mt: 0.5, textAlign: 'center' }}>
+          Build a structured class with lectures, assessments, and grading.
         </Typography>
         {error && <Alert severity="error" sx={{ mt: 2, width: '100%' }}>{error}</Alert>}
         {success && <Alert severity="success" sx={{ mt: 2, width: '100%' }}>{success}</Alert>}
-        <Box component="form" onSubmit={handleSubmit} sx={{ mt: 1, width: '100%' }}>
+        <Box component="form" onSubmit={handleSubmit} sx={{ mt: 2, width: '100%' }}>
           <TextField
             margin="normal"
             required
@@ -161,7 +165,7 @@ const CreateCourse = () => {
             Create Course
           </Button>
         </Box>
-      </Box>
+      </Paper>
     </Container>
   );
 };

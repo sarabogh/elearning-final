@@ -47,8 +47,41 @@ const courseSchema = new mongoose.Schema({
   assignments: [{
     title: String,
     description: String,
+    instructions: String,
+    submissionType: {
+      type: String,
+      enum: ['text', 'url', 'file'],
+      default: 'text'
+    },
+    maxPoints: {
+      type: Number,
+      default: 100
+    },
     dueDate: Date,
     attachmentUrl: String,
+    submissions: [{
+      student: {
+        type: mongoose.Schema.Types.ObjectId,
+        ref: 'User'
+      },
+      textAnswer: String,
+      submissionUrl: String,
+      status: {
+        type: String,
+        enum: ['submitted', 'graded'],
+        default: 'submitted'
+      },
+      score: {
+        type: Number,
+        default: null
+      },
+      feedback: String,
+      submittedAt: {
+        type: Date,
+        default: Date.now
+      },
+      gradedAt: Date
+    }],
     order: Number,
     createdAt: {
       type: Date,
@@ -65,6 +98,35 @@ const courseSchema = new mongoose.Schema({
       points: Number
     }],
     totalPoints: Number,
+    autoGrade: {
+      type: Boolean,
+      default: true
+    },
+    submissions: [{
+      student: {
+        type: mongoose.Schema.Types.ObjectId,
+        ref: 'User'
+      },
+      answers: [String],
+      score: {
+        type: Number,
+        default: 0
+      },
+      maxScore: {
+        type: Number,
+        default: 0
+      },
+      feedback: String,
+      autoGraded: {
+        type: Boolean,
+        default: true
+      },
+      submittedAt: {
+        type: Date,
+        default: Date.now
+      },
+      gradedAt: Date
+    }],
     dueDate: Date,
     order: Number,
     createdAt: {
@@ -76,8 +138,40 @@ const courseSchema = new mongoose.Schema({
     title: String,
     description: String,
     requirements: String,
+    submissionType: {
+      type: String,
+      enum: ['text', 'url', 'file'],
+      default: 'text'
+    },
+    maxPoints: {
+      type: Number,
+      default: 100
+    },
     dueDate: Date,
     attachmentUrl: String,
+    submissions: [{
+      student: {
+        type: mongoose.Schema.Types.ObjectId,
+        ref: 'User'
+      },
+      textAnswer: String,
+      submissionUrl: String,
+      status: {
+        type: String,
+        enum: ['submitted', 'graded'],
+        default: 'submitted'
+      },
+      score: {
+        type: Number,
+        default: null
+      },
+      feedback: String,
+      submittedAt: {
+        type: Date,
+        default: Date.now
+      },
+      gradedAt: Date
+    }],
     order: Number,
     createdAt: {
       type: Date,
@@ -105,6 +199,10 @@ const courseSchema = new mongoose.Schema({
       ref: 'User'
     },
     grade: String,
+    numericGrade: {
+      type: Number,
+      default: null
+    },
     feedback: String,
     updatedAt: {
       type: Date,
