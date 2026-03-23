@@ -16,6 +16,7 @@ import {
 } from '@mui/material';
 import { useNavigate, useSearchParams } from 'react-router-dom';
 import api from '../services/api';
+import { COURSE_CATEGORIES } from '../utils/courseCategories';
 
 const CourseSearch = () => {
   const navigate = useNavigate();
@@ -27,17 +28,6 @@ const CourseSearch = () => {
     category: searchParams.get('category') || '',
     level: searchParams.get('level') || ''
   });
-
-  const categories = [
-    'Web Development',
-    'Mobile Development',
-    'Data Science',
-    'AI & Machine Learning',
-    'Cloud Computing',
-    'DevOps',
-    'Cybersecurity',
-    'Other'
-  ];
 
   const levels = ['beginner', 'intermediate', 'advanced'];
 
@@ -117,7 +107,7 @@ const CourseSearch = () => {
               size="small"
             >
               <MenuItem value="">All Categories</MenuItem>
-              {categories.map(cat => (
+              {COURSE_CATEGORIES.map((cat) => (
                 <MenuItem key={cat} value={cat}>{cat}</MenuItem>
               ))}
             </TextField>

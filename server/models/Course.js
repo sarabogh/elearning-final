@@ -110,7 +110,7 @@ const courseSchema = new mongoose.Schema({
       answers: [String],
       score: {
         type: Number,
-        default: 0
+        default: null
       },
       maxScore: {
         type: Number,
@@ -232,6 +232,15 @@ const courseSchema = new mongoose.Schema({
   isPublished: {
     type: Boolean,
     default: false
+  },
+  catalogStatus: {
+    type: String,
+    enum: ['draft', 'pending', 'published', 'rejected'],
+    default: 'pending'
+  },
+  rejectionReason: {
+    type: String,
+    default: ''
   },
   createdAt: {
     type: Date,

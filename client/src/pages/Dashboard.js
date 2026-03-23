@@ -415,6 +415,19 @@ const Dashboard = () => {
                         <Typography variant="body2" color="textSecondary">
                           {course.category} • {course.level}
                         </Typography>
+                        {course.catalogStatus === 'pending' && (
+                          <Chip label="Pending Approval" color="warning" size="small" sx={{ mt: 0.75 }} />
+                        )}
+                        {course.catalogStatus === 'rejected' && (
+                          <Box sx={{ mt: 0.75 }}>
+                            <Chip label="Rejected" color="error" size="small" />
+                            {course.rejectionReason && (
+                              <Typography variant="caption" color="error.main" sx={{ display: 'block', mt: 0.5 }}>
+                                Feedback: {course.rejectionReason}
+                              </Typography>
+                            )}
+                          </Box>
+                        )}
                       </CardContent>
                       <CardActions>
                         <Button size="small" component={Link} to={`/course/${course._id}`}>

@@ -3,6 +3,7 @@ import {
   Container,
   Typography,
   Button,
+  Avatar,
   Box,
   TextField,
   Rating,
@@ -22,7 +23,8 @@ import {
   DialogActions,
   Tabs,
   Tab,
-  Collapse
+  Collapse,
+  CircularProgress
 } from '@mui/material';
 
 import { useParams, useNavigate, useSearchParams } from 'react-router-dom';
@@ -77,6 +79,15 @@ const composerSectionSx = { p: 2, border: '1px solid', borderColor: 'divider', b
 const contentCardSx = { mb: 2, border: '1px solid', borderColor: 'divider' };
 const lowerSectionSx = { px: 2, pb: 2, pt: 0, borderTop: '1px solid', borderColor: 'divider', mt: 1 };
 const sectionTitleSx = { mb: 1.5, fontWeight: 600 };
+
+const getPersonInitials = (name = '') => {
+  return name
+    .split(' ')
+    .filter(Boolean)
+    .slice(0, 2)
+    .map((part) => part[0]?.toUpperCase() || '')
+    .join('');
+};
 
 const ComposerCard = ({ title, description, actionLabel, onAction, children }) => (
   <Card sx={composerCardSx}>
@@ -144,8 +155,9 @@ const SubmissionStatsGrid = ({ stats }) => (
     <Grid item xs={6} sm={4}><Paper variant="outlined" sx={{ p: 1.1 }}><Typography variant="caption" color="text.secondary">Submitted</Typography><Typography variant="h6">{stats.total}</Typography></Paper></Grid>
     <Grid item xs={6} sm={4}><Paper variant="outlined" sx={{ p: 1.1 }}><Typography variant="caption" color="text.secondary">Graded</Typography><Typography variant="h6">{stats.graded}</Typography></Paper></Grid>
     <Grid item xs={6} sm={4}><Paper variant="outlined" sx={{ p: 1.1 }}><Typography variant="caption" color="text.secondary">Pending</Typography><Typography variant="h6">{stats.pending}</Typography></Paper></Grid>
-    <Grid item xs={6} sm={6}><Paper variant="outlined" sx={{ p: 1.1 }}><Typography variant="caption" color="text.secondary">Highest</Typography><Typography variant="h6">{stats.highest === '-' ? '-' : `${stats.highest}/${stats.maxPoints}`}</Typography></Paper></Grid>
-    <Grid item xs={6} sm={6}><Paper variant="outlined" sx={{ p: 1.1 }}><Typography variant="caption" color="text.secondary">Lowest / Avg</Typography><Typography variant="h6">{stats.lowest === '-' ? '-' : `${stats.lowest}/${stats.maxPoints}`}</Typography><Typography variant="caption" color="text.secondary">Avg {stats.average === '-' ? '-' : `${stats.average}/${stats.maxPoints}`}</Typography></Paper></Grid>
+    <Grid item xs={6} sm={4}><Paper variant="outlined" sx={{ p: 1.1 }}><Typography variant="caption" color="text.secondary">Highest</Typography><Typography variant="h6">{stats.highest === '-' ? '-' : `${stats.highest}/${stats.maxPoints}`}</Typography></Paper></Grid>
+    <Grid item xs={6} sm={4}><Paper variant="outlined" sx={{ p: 1.1 }}><Typography variant="caption" color="text.secondary">Lowest</Typography><Typography variant="h6">{stats.lowest === '-' ? '-' : `${stats.lowest}/${stats.maxPoints}`}</Typography></Paper></Grid>
+    <Grid item xs={12} sm={4}><Paper variant="outlined" sx={{ p: 1.1, borderColor: 'primary.main' }}><Typography variant="caption" color="text.secondary">Average</Typography><Typography variant="h6">{stats.average === '-' ? '-' : `${stats.average}/${stats.maxPoints}`}</Typography></Paper></Grid>
   </Grid>
 );
 
@@ -190,7 +202,7 @@ const LearnerSubmissionSection = ({
         </Grid>
       )}
 
-      {(submissionType === 'url' || submissionType === 'file') && (
+      {(submissionType === 'url') && (
         <Grid item xs={12} sm={6}>
           <TextField
             fullWidth
@@ -294,6 +306,9 @@ const CourseDetails = () => {
   const [review, setReview] = useState('');
 
   const [lectureForm, setLectureForm] = useState(emptyLectureForm);
+  const [lectureVideoMode, setLectureVideoMode] = useState('url');
+  const [lectureUploading, setLectureUploading] = useState(false);
+  const [lectureUploadedFile, setLectureUploadedFile] = useState(null);
   const [assignmentForm, setAssignmentForm] = useState(emptyAssignmentForm);
   const [projectForm, setProjectForm] = useState(emptyProjectForm);
   const [testForm, setTestForm] = useState(emptyTestForm);
@@ -302,6 +317,7 @@ const CourseDetails = () => {
   const [gradeInputs, setGradeInputs] = useState({});
   const [assignmentGradeInputs, setAssignmentGradeInputs] = useState({});
   const [projectGradeInputs, setProjectGradeInputs] = useState({});
+  const [testGradeInputs, setTestGradeInputs] = useState({});
 
   const [assignmentSubmissionDrafts, setAssignmentSubmissionDrafts] = useState({});
   const [projectSubmissionDrafts, setProjectSubmissionDrafts] = useState({});
@@ -317,6 +333,14 @@ const CourseDetails = () => {
   const [rubricLocks, setRubricLocks] = useState({});
   const [rubricSelections, setRubricSelections] = useState({});
   const [deadlinesExpanded, setDeadlinesExpanded] = useState(false);
+  const [teacherListQuery, setTeacherListQuery] = useState({ lecture: '', assignment: '', test: '', project: '' });
+  const [teacherListSort, setTeacherListSort] = useState({ lecture: 'newest', assignment: 'newest', test: 'newest', project: 'newest' });
+  const [learnerListQuery, setLearnerListQuery] = useState({ lecture: '', assignment: '', test: '', project: '' });
+  const [learnerListSort, setLearnerListSort] = useState({ lecture: 'newest', assignment: 'newest', test: 'newest', project: 'newest' });
+  const [teacherSubmissionQuery, setTeacherSubmissionQuery] = useState('');
+  const [teacherSubmissionSort, setTeacherSubmissionSort] = useState('name-asc');
+  const [lectureWatchDetails, setLectureWatchDetails] = useState({ loading: false, students: [] });
+  const [unlockedLectures, setUnlockedLectures] = useState(new Set());
 
   const currentUserId = user?._id || user?.id;
 
@@ -400,10 +424,31 @@ const CourseDetails = () => {
     }
   };
 
+  const handleLectureFileUpload = async (e) => {
+    const file = e.target.files[0];
+    if (!file) return;
+    setLectureUploading(true);
+    try {
+      const formData = new FormData();
+      formData.append('file', file);
+      const res = await api.post('/uploads/single', formData, {
+        headers: { 'Content-Type': 'multipart/form-data' }
+      });
+      setLectureForm(prev => ({ ...prev, videoUrl: res.data.file.url }));
+      setLectureUploadedFile(file.name);
+    } catch (err) {
+      alert('Upload failed: ' + (err.response?.data?.message || err.message));
+    } finally {
+      setLectureUploading(false);
+    }
+  };
+
   const handleAddLecture = async () => {
     try {
       await api.post(`/courses/${id}/lectures`, lectureForm);
       setLectureForm(emptyLectureForm);
+      setLectureVideoMode('url');
+      setLectureUploadedFile(null);
       showSuccess('Lecture added successfully');
       fetchCourse();
     } catch (error) {
@@ -452,6 +497,25 @@ const CourseDetails = () => {
       fetchCourse();
     } catch (error) {
       alert('Failed: ' + (error.response?.data?.message || 'Could not delete lecture'));
+    }
+  };
+
+  const isDirectVideoUrl = (url) => {
+    if (!url) return false;
+    try {
+      const clean = url.split('?')[0].toLowerCase();
+      return /\.(mp4|webm|ogg|mov)$/.test(clean);
+    } catch { return false; }
+  };
+
+  const unlockLecture = (lectureId) => {
+    setUnlockedLectures((prev) => new Set([...prev, lectureId]));
+  };
+
+  const handleVideoTimeUpdate = (e, lectureId) => {
+    const { currentTime, duration } = e.target;
+    if (duration && currentTime / duration >= 0.5) {
+      unlockLecture(lectureId);
     }
   };
 
@@ -784,7 +848,11 @@ const CourseDetails = () => {
       const answers = testAnswerDrafts[testId] || [];
       const response = await api.post(`/courses/${id}/tests/${testId}/submit`, { answers });
       await safeRefreshUser();
-      showSuccess(`Test submitted. Score: ${response.data.score}/${response.data.maxScore}`);
+      if (response.data?.autoGraded) {
+        showSuccess(`Test submitted. Score: ${response.data.score}/${response.data.maxScore}`);
+      } else {
+        showSuccess('Test submitted. Awaiting manual grade.');
+      }
       fetchCourse();
     } catch (error) {
       alert('Failed: ' + (error.response?.data?.message || 'Could not submit test'));
@@ -827,6 +895,17 @@ const CourseDetails = () => {
     }));
   };
 
+  const handleTestGradeChange = (testId, studentId, field, value) => {
+    const key = `${testId}-${studentId}`;
+    setTestGradeInputs((prev) => ({
+      ...prev,
+      [key]: {
+        ...prev[key],
+        [field]: value
+      }
+    }));
+  };
+
   const gradeAssignmentSubmission = async (assignmentId, studentId) => {
     try {
       const payload = assignmentGradeInputs[`${assignmentId}-${studentId}`] || {};
@@ -852,6 +931,33 @@ const CourseDetails = () => {
       fetchCourse();
     } catch (error) {
       alert('Failed: ' + (error.response?.data?.message || 'Could not grade project'));
+    }
+  };
+
+  const gradeTestSubmission = async (testId, studentId, maxScore) => {
+    try {
+      const payload = testGradeInputs[`${testId}-${studentId}`] || {};
+      await api.put(`/courses/${id}/tests/${testId}/grade/${studentId}`, {
+        score: payload.score ?? '',
+        feedback: payload.feedback ?? ''
+      });
+      showSuccess(`Test graded (${payload.score ?? 0}/${maxScore || 0})`);
+      fetchCourse();
+    } catch (error) {
+      alert('Failed: ' + (error.response?.data?.message || 'Could not grade test'));
+    }
+  };
+
+  const reopenSubmission = async (type, itemId, studentId) => {
+    const typeLabel = type.charAt(0).toUpperCase() + type.slice(1);
+    const confirmed = window.confirm(`Reopen this ${typeLabel.toLowerCase()} submission? The student will be able to resubmit and any existing grade will be removed.`);
+    if (!confirmed) return;
+    try {
+      await api.delete(`/courses/${id}/${type}s/${itemId}/submissions/${studentId}`);
+      showSuccess(`${typeLabel} submission reopened`);
+      fetchCourse();
+    } catch (error) {
+      alert('Failed: ' + (error.response?.data?.message || `Could not reopen ${type}`));
     }
   };
 
@@ -884,11 +990,88 @@ const CourseDetails = () => {
     }
   }, [detailDrawerOpen, selectedAssessment, focusedSubmissionStudentId]);
 
+  const detailType = searchParams.get('detailType') || '';
+  const detailId = searchParams.get('detailId') || '';
+
+  useEffect(() => {
+    let cancelled = false;
+
+    const loadLectureWatchDetails = async () => {
+      if (!course || detailType !== 'lecture' || tab !== 0 || !detailId) {
+        if (!cancelled) {
+          setLectureWatchDetails({ loading: false, students: [] });
+        }
+        return;
+      }
+
+      const instructorId = course.instructor?._id || course.instructor;
+      const canView = user?.role === 'admin' || (currentUserId && currentUserId === instructorId);
+      if (!canView) {
+        if (!cancelled) {
+          setLectureWatchDetails({ loading: false, students: [] });
+        }
+        return;
+      }
+
+      const lecture = (course.lectures || []).find((item) => String(item._id) === String(detailId));
+      if (!lecture) {
+        if (!cancelled) {
+          setLectureWatchDetails({ loading: false, students: [] });
+        }
+        return;
+      }
+
+      const approved = (course.enrolledStudents || []).filter((entry) => entry.status === 'approved');
+      if (!approved.length) {
+        if (!cancelled) {
+          setLectureWatchDetails({ loading: false, students: [] });
+        }
+        return;
+      }
+
+      if (!cancelled) {
+        setLectureWatchDetails({ loading: true, students: [] });
+      }
+
+      const results = await Promise.allSettled(
+        approved.map(async (entry) => {
+          const studentId = entry.student?._id || entry.student;
+          const studentName = entry.student?.name || 'Student';
+          const profile = await api.get(`/users/${studentId}`);
+          const enrollment = (profile.data?.enrolledCourses || []).find((en) => {
+            const enrolledCourseId = en.course?._id || en.course;
+            return String(enrolledCourseId) === String(course._id);
+          });
+          const completedLessons = new Set((enrollment?.completedLessons || []).map((lessonId) => String(lessonId?._id || lessonId)));
+          return completedLessons.has(String(lecture._id)) ? { id: String(studentId), name: studentName } : null;
+        })
+      );
+
+      const watchedStudents = results
+        .filter((result) => result.status === 'fulfilled' && result.value)
+        .map((result) => result.value)
+        .sort((a, b) => a.name.localeCompare(b.name));
+
+      if (!cancelled) {
+        setLectureWatchDetails({ loading: false, students: watchedStudents });
+      }
+    };
+
+    loadLectureWatchDetails();
+
+    return () => {
+      cancelled = true;
+    };
+  }, [course, detailType, tab, detailId, user?.role, currentUserId]);
+
   if (!course) return <Typography>Loading...</Typography>;
 
   const isInstructor = currentUserId && currentUserId === (course.instructor?._id || course.instructor);
   const isAdmin = user?.role === 'admin';
   const isTeacher = isInstructor || isAdmin;
+  const instructorProfile = course.instructor?.profile || {};
+  const instructorRole = course.instructor?.role || 'faculty';
+  const instructorRoleLabel = instructorRole.charAt(0).toUpperCase() + instructorRole.slice(1);
 
   const enrollmentRecord = (course.enrolledStudents || []).find((entry) => {
     const sid = entry.student?._id || entry.student;
@@ -899,6 +1082,7 @@ const CourseDetails = () => {
   const isPending = enrollmentRecord?.status === 'pending';
   const initialChatId = searchParams.get('chatId') || '';
   const initialReplyDraft = searchParams.get('replyText') || '';
+ 
 
   const userEnrollment = (user?.enrolledCourses || []).find(
     (enrolled) =>
@@ -941,6 +1125,125 @@ const CourseDetails = () => {
   const closeAssessmentDetails = () => {
     setDetailDrawerOpen(false);
     setFocusedSubmissionStudentId('');
+  };
+
+  const navigateWithParams = (nextParams) => {
+    navigate(
+      {
+        pathname: `/course/${id}`,
+        search: nextParams.toString() ? `?${nextParams.toString()}` : ''
+      }
+    );
+  };
+
+  const openItemDetails = (type, itemId) => {
+    const nextParams = new URLSearchParams(searchParams);
+    nextParams.set('tab', String(getTypeTabIndex(type)));
+    nextParams.set('detailType', type);
+    nextParams.set('detailId', itemId);
+    navigateWithParams(nextParams);
+  };
+
+  const closeItemDetails = () => {
+    const nextParams = new URLSearchParams(searchParams);
+    nextParams.set('tab', String(tab));
+    nextParams.delete('detailType');
+    nextParams.delete('detailId');
+    navigateWithParams(nextParams);
+  };
+
+  const getItemDateValue = (item) => {
+    const raw = item?.createdAt || item?.dueDate;
+    if (!raw) return 0;
+    const parsed = new Date(raw).getTime();
+    return Number.isNaN(parsed) ? 0 : parsed;
+  };
+
+  const getTeacherFilteredItems = (type, sourceItems = []) => {
+    const query = (teacherListQuery[type] || '').trim().toLowerCase();
+    const sort = teacherListSort[type] || 'newest';
+
+    const filtered = sourceItems.filter((item) => (item.title || '').toLowerCase().includes(query));
+    const sorted = filtered.slice().sort((a, b) => {
+      if (sort === 'name-asc') return (a.title || '').localeCompare(b.title || '');
+      if (sort === 'name-desc') return (b.title || '').localeCompare(a.title || '');
+      if (sort === 'oldest') return getItemDateValue(a) - getItemDateValue(b);
+      return getItemDateValue(b) - getItemDateValue(a);
+    });
+
+    return sorted;
+  };
+
+  const getTypeTabIndex = (type) => ({ lecture: 0, assignment: 1, test: 2, project: 3 }[type] ?? 0);
+  const detailItemsByType = {
+    lecture: course.lectures || [],
+    assignment: course.assignments || [],
+    test: course.tests || [],
+    project: course.projects || []
+  };
+  const activeDetailItem = detailType && detailId
+    ? (detailItemsByType[detailType] || []).find((item) => String(item._id) === String(detailId))
+    : null;
+  const isDetailActiveForCurrentTab = Boolean(activeDetailItem) && getTypeTabIndex(detailType) === tab;
+
+  const getTeacherSubmissions = (item, maxPoints = 100) => {
+    const query = teacherSubmissionQuery.trim().toLowerCase();
+    return (item?.submissions || [])
+      .filter((sub) => (sub.student?.name || String(sub.student || '')).toLowerCase().includes(query))
+      .slice()
+      .sort((a, b) => {
+        const nameA = (a.student?.name || String(a.student || '')).toLowerCase();
+        const nameB = (b.student?.name || String(b.student || '')).toLowerCase();
+        const scoreA = Number(a.score ?? -1);
+        const scoreB = Number(b.score ?? -1);
+        if (teacherSubmissionSort === 'name-desc') return nameB.localeCompare(nameA);
+        if (teacherSubmissionSort === 'score-desc') return scoreB - scoreA;
+        if (teacherSubmissionSort === 'score-asc') return scoreA - scoreB;
+        if (teacherSubmissionSort === 'status') {
+          const gradedA = a.score !== null && a.score !== undefined && a.score !== '' ? 1 : 0;
+          const gradedB = b.score !== null && b.score !== undefined && b.score !== '' ? 1 : 0;
+          if (gradedA !== gradedB) return gradedA - gradedB;
+          return nameA.localeCompare(nameB);
+        }
+        return nameA.localeCompare(nameB);
+      })
+      .map((sub) => ({
+        ...sub,
+        maxPoints
+      }));
+  };
+
+  const getLearnerItemStatus = (type, item) => {
+    if (type === 'lecture') {
+      return { done: completedLectureIds.has(String(item._id)), submission: null };
+    }
+    if (type === 'assignment') {
+      const sub = getMyAssignmentSubmission(item);
+      return { done: Boolean(sub), submission: sub || null };
+    }
+    if (type === 'test') {
+      const sub = getMyTestSubmission(item);
+      return { done: Boolean(sub), submission: sub || null };
+    }
+    if (type === 'project') {
+      const sub = getMyProjectSubmission(item);
+      return { done: Boolean(sub), submission: sub || null };
+    }
+    return { done: false, submission: null };
+  };
+
+  const getLearnerFilteredItems = (type, items = []) => {
+    const query = (learnerListQuery[type] || '').trim().toLowerCase();
+    const sort = learnerListSort[type] || 'newest';
+    const filtered = items.filter((item) => (item.title || '').toLowerCase().includes(query));
+    if (sort === 'incomplete') return filtered.filter((item) => !getLearnerItemStatus(type, item).done);
+    if (sort === 'complete') return filtered.filter((item) => getLearnerItemStatus(type, item).done);
+    return filtered.slice().sort((a, b) => {
+      if (sort === 'name-asc') return (a.title || '').localeCompare(b.title || '');
+      if (sort === 'name-desc') return (b.title || '').localeCompare(a.title || '');
+      if (sort === 'oldest') return getItemDateValue(a) - getItemDateValue(b);
+      return getItemDateValue(b) - getItemDateValue(a);
+    });
   };
 
   const courseDeadlines = [
@@ -1122,6 +1425,693 @@ const CourseDetails = () => {
     setRubricLocks((prev) => ({ ...prev, [key]: locked }));
   };
 
+  const renderTeacherCreatedList = (type, items, options = {}) => {
+    const listTitle = options.listTitle || `Created ${type.charAt(0).toUpperCase() + type.slice(1)}s`;
+    const maxPointsField = options.maxPointsField || 'maxPoints';
+    const infoLabel = options.infoLabel || '';
+
+    const filteredItems = getTeacherFilteredItems(type, items);
+
+    return (
+      <Card sx={{ mb: 2 }}>
+        <CardContent>
+          <Typography variant="h6" sx={{ mb: 1.5 }}>{listTitle}</Typography>
+          <Grid container spacing={1.5} sx={{ mb: 2 }}>
+            <Grid item xs={12} md={7}>
+              <TextField
+                fullWidth
+                size="small"
+                label={`Search ${type}s by name`}
+                value={teacherListQuery[type] || ''}
+                onChange={(e) => setTeacherListQuery((prev) => ({ ...prev, [type]: e.target.value }))}
+              />
+            </Grid>
+            <Grid item xs={12} md={5}>
+              <TextField
+                fullWidth
+                size="small"
+                select
+                label="Sort"
+                value={teacherListSort[type] || 'newest'}
+                onChange={(e) => setTeacherListSort((prev) => ({ ...prev, [type]: e.target.value }))}
+              >
+                <MenuItem value="newest">Date created (newest)</MenuItem>
+                <MenuItem value="oldest">Date created (oldest)</MenuItem>
+                <MenuItem value="name-asc">Name (A-Z)</MenuItem>
+                <MenuItem value="name-desc">Name (Z-A)</MenuItem>
+              </TextField>
+            </Grid>
+          </Grid>
+
+          {filteredItems.length === 0 ? (
+            <Typography variant="body2" color="text.secondary">No {type}s found.</Typography>
+          ) : (
+            <Stack spacing={1.1}>
+              {filteredItems.map((item) => (
+                <Paper key={item._id} variant="outlined" sx={{ p: 1.5 }}>
+                  <Box sx={{ display: 'flex', justifyContent: 'space-between', gap: 1.5, flexWrap: 'wrap' }}>
+                    <Box sx={{ flex: 1, minWidth: 240 }}>
+                      <Typography variant="subtitle1" sx={{ fontWeight: 700 }}>{item.title}</Typography>
+                      {item.description && (
+                        <Typography variant="body2" color="text.secondary" sx={{ mt: 0.4 }}>
+                          {item.description}
+                        </Typography>
+                      )}
+                      <Stack direction="row" spacing={0.8} sx={{ mt: 1, flexWrap: 'wrap' }}>
+                        {infoLabel && item[infoLabel] ? <Chip size="small" label={item[infoLabel]} /> : null}
+                        {type === 'test' ? (
+                          <Chip
+                            size="small"
+                            color={item.autoGrade !== false ? 'success' : 'warning'}
+                            variant={item.autoGrade !== false ? 'filled' : 'outlined'}
+                            label={item.autoGrade !== false ? 'Auto Grade' : 'Manual Grade'}
+                          />
+                        ) : null}
+                        {item[maxPointsField] ? <Chip size="small" label={`Max: ${item[maxPointsField]}`} /> : null}
+                        {item.submissionType ? <Chip size="small" label={`Submit: ${item.submissionType}`} /> : null}
+                        {item.dueDate ? <Chip size="small" label={`Due: ${new Date(item.dueDate).toLocaleString()}`} /> : null}
+                      </Stack>
+                    </Box>
+                    <Stack direction="row" spacing={1}>
+                      <Button size="small" variant="outlined" onClick={() => openItemDetails(type, item._id)}>Details</Button>
+                      <Button size="small" onClick={() => type === 'lecture' ? openLectureEditor(item) : openAssessmentEditor(type, item)}>Edit</Button>
+                      <Button size="small" color="error" onClick={() => type === 'lecture' ? handleDeleteLecture(item._id, item.title) : handleDeleteAssessment(type, item._id, item.title)}>Delete</Button>
+                    </Stack>
+                  </Box>
+                </Paper>
+              ))}
+            </Stack>
+          )}
+        </CardContent>
+      </Card>
+    );
+  };
+
+  const renderTeacherDetailPage = () => {
+    if (!isTeacher || !activeDetailItem) return null;
+    if (getTypeTabIndex(detailType) !== tab) return null;
+
+    const typeLabel = detailType.charAt(0).toUpperCase() + detailType.slice(1);
+    const maxPoints = activeDetailItem.maxPoints || activeDetailItem.totalPoints || 100;
+    const stats = getSubmissionStats(activeDetailItem.submissions || [], maxPoints);
+    const submissions = getTeacherSubmissions(activeDetailItem, maxPoints);
+
+    return (
+      <Card sx={{ mb: 2 }}>
+        <CardContent>
+          <Button size="small" variant="text" onClick={closeItemDetails} sx={{ mb: 1 }}>Back to Created {typeLabel}s</Button>
+          <Typography variant="h5" sx={{ fontWeight: 700 }}>{activeDetailItem.title}</Typography>
+          {activeDetailItem.description && (
+            <Typography variant="body2" color="text.secondary" sx={{ mt: 0.6, mb: 1.2 }}>
+              {activeDetailItem.description}
+            </Typography>
+          )}
+
+          {activeDetailItem.instructions && (
+            <Typography variant="body2" sx={{ mb: 0.6 }}><strong>Instructions:</strong> {activeDetailItem.instructions}</Typography>
+          )}
+          {activeDetailItem.requirements && (
+            <Typography variant="body2" sx={{ mb: 0.6 }}><strong>Requirements:</strong> {activeDetailItem.requirements}</Typography>
+          )}
+
+          <Stack direction="row" spacing={0.8} sx={{ mb: 1.5, flexWrap: 'wrap' }}>
+            {detailType !== 'lecture' && <Chip size="small" label={`Max: ${maxPoints}`} />}
+            {activeDetailItem.submissionType && <Chip size="small" label={`Submit: ${activeDetailItem.submissionType}`} />}
+            {activeDetailItem.dueDate && <Chip size="small" label={`Due: ${new Date(activeDetailItem.dueDate).toLocaleString()}`} />}
+            {detailType === 'lecture' && activeDetailItem.duration ? <Chip size="small" label={`Duration: ${activeDetailItem.duration} min`} /> : null}
+          </Stack>
+
+          <Stack direction="row" spacing={1} sx={{ mb: 2 }}>
+            <Button size="small" onClick={() => detailType === 'lecture' ? openLectureEditor(activeDetailItem) : openAssessmentEditor(detailType, activeDetailItem)}>Edit</Button>
+            <Button
+              size="small"
+              color="error"
+              onClick={() => detailType === 'lecture'
+                ? handleDeleteLecture(activeDetailItem._id, activeDetailItem.title)
+                : handleDeleteAssessment(detailType, activeDetailItem._id, activeDetailItem.title)}
+            >
+              Delete
+            </Button>
+          </Stack>
+
+          {detailType === 'lecture' ? (
+            <Box>
+              <Typography variant="subtitle1" sx={{ fontWeight: 700, mb: 1 }}>Lecture Watch Activity</Typography>
+              {lectureWatchDetails.loading ? (
+                <Typography variant="body2" color="text.secondary">Loading watch details...</Typography>
+              ) : (
+                <>
+                  <Stack direction="row" spacing={1} sx={{ mb: 1.2, flexWrap: 'wrap' }}>
+                    <Chip size="small" label={`Watched: ${lectureWatchDetails.students.length}`} color="success" />
+                    <Chip size="small" label={`Not watched: ${Math.max(0, approvedStudents.length - lectureWatchDetails.students.length)}`} variant="outlined" />
+                  </Stack>
+                  {lectureWatchDetails.students.length === 0 ? (
+                    <Typography variant="body2" color="text.secondary">No learners have marked this lecture as watched yet.</Typography>
+                  ) : (
+                    <Stack spacing={0.8}>
+                      {lectureWatchDetails.students.map((student) => (
+                        <Paper key={`lecture-watch-${student.id}`} variant="outlined" sx={{ p: 1 }}>
+                          <Typography variant="body2" sx={{ fontWeight: 600 }}>{student.name}</Typography>
+                        </Paper>
+                      ))}
+                    </Stack>
+                  )}
+                </>
+              )}
+            </Box>
+          ) : (
+            <>
+              <Typography variant="subtitle1" sx={{ fontWeight: 700, mb: 1 }}>Submissions Overview</Typography>
+              <SubmissionStatsGrid stats={stats} />
+
+              {(detailType === 'assignment' || detailType === 'project') && (
+                <Paper variant="outlined" sx={{ p: 1.5, mb: 2 }}>
+                  <Typography variant="subtitle2" sx={{ mb: 1 }}>Rubric</Typography>
+                  <Stack spacing={0.8}>
+                    {drawerRubric.map((row) => (
+                      <Paper key={row.criterion} variant="outlined" sx={{ p: 1, borderStyle: 'dashed' }}>
+                        <Box sx={{ display: 'flex', justifyContent: 'space-between', mb: 0.4 }}>
+                          <Typography variant="body2" sx={{ fontWeight: 700 }}>{row.criterion}</Typography>
+                          <Typography variant="body2" color="text.secondary">{row.weight}%</Typography>
+                        </Box>
+                        <Stack direction="row" spacing={0.6} sx={{ flexWrap: 'wrap' }}>
+                          {row.levels.map((level) => <Chip key={`${row.criterion}-${level}`} size="small" label={level} variant="outlined" />)}
+                        </Stack>
+                      </Paper>
+                    ))}
+                  </Stack>
+                </Paper>
+              )}
+
+              <Grid container spacing={1.5} sx={{ mb: 1.5 }}>
+                <Grid item xs={12} md={7}>
+                  <TextField
+                    fullWidth
+                    size="small"
+                    label="Search student"
+                    value={teacherSubmissionQuery}
+                    onChange={(e) => setTeacherSubmissionQuery(e.target.value)}
+                  />
+                </Grid>
+                <Grid item xs={12} md={5}>
+                  <TextField
+                    fullWidth
+                    size="small"
+                    select
+                    label="Sort students"
+                    value={teacherSubmissionSort}
+                    onChange={(e) => setTeacherSubmissionSort(e.target.value)}
+                  >
+                    <MenuItem value="name-asc">Name (A-Z)</MenuItem>
+                    <MenuItem value="name-desc">Name (Z-A)</MenuItem>
+                    <MenuItem value="score-desc">Score (High-Low)</MenuItem>
+                    <MenuItem value="score-asc">Score (Low-High)</MenuItem>
+                    <MenuItem value="status">Pending first</MenuItem>
+                  </TextField>
+                </Grid>
+              </Grid>
+
+              {submissions.length === 0 ? (
+                <Typography variant="body2" color="text.secondary">No submissions yet.</Typography>
+              ) : (
+                <Stack spacing={1.1}>
+                  {submissions.map((sub) => {
+                    const sid = sub.student?._id || sub.student;
+                    const name = sub.student?.name || sid;
+                    const graded = sub.score !== null && sub.score !== undefined && sub.score !== '';
+
+                    if (detailType === 'test') {
+                      const testKey = `${activeDetailItem._id}-${sid}`;
+                      const testDraft = testGradeInputs[testKey] || { score: sub.score ?? '', feedback: sub.feedback || '' };
+                      const testIsGraded = sub.score !== null && sub.score !== undefined;
+
+                      return (
+                        <Paper key={`${activeDetailItem._id}-${sid}`} variant="outlined" sx={{ p: 1.2 }}>
+                          <Box sx={{ display: 'flex', justifyContent: 'space-between', gap: 1, flexWrap: 'wrap' }}>
+                            <Typography variant="subtitle2" sx={{ fontWeight: 700 }}>{name}</Typography>
+                            <Stack direction="row" spacing={0.8}>
+                              <Chip size="small" label={testIsGraded ? `${sub.score}/${sub.maxScore || maxPoints}` : 'Pending'} color={testIsGraded ? 'success' : 'default'} variant={testIsGraded ? 'filled' : 'outlined'} />
+                              <Chip size="small" label={sub.autoGraded ? 'Auto-graded' : 'Reviewed'} variant="outlined" />
+                            </Stack>
+                          </Box>
+                          <Grid container spacing={1} sx={{ mt: 0.4 }}>
+                            <Grid item xs={12} sm={3}>
+                              <TextField
+                                fullWidth
+                                size="small"
+                                type="number"
+                                label="Score"
+                                value={testDraft.score ?? ''}
+                                onChange={(e) => handleTestGradeChange(activeDetailItem._id, sid, 'score', e.target.value)}
+                              />
+                            </Grid>
+                            <Grid item xs={12} sm={6}>
+                              <TextField
+                                fullWidth
+                                size="small"
+                                label="Feedback"
+                                value={testDraft.feedback ?? ''}
+                                onChange={(e) => handleTestGradeChange(activeDetailItem._id, sid, 'feedback', e.target.value)}
+                              />
+                            </Grid>
+                            <Grid item xs={12} sm={3}>
+                              <Button
+                                fullWidth
+                                size="small"
+                                variant="contained"
+                                sx={{ height: '100%' }}
+                                onClick={() => gradeTestSubmission(activeDetailItem._id, sid, maxPoints)}
+                              >
+                                Save Grade
+                              </Button>
+                            </Grid>
+                          </Grid>
+                          {sub.answers?.length ? (
+                            <Typography variant="caption" color="text.secondary" sx={{ mt: 0.8, display: 'block' }}>
+                              Student answered {sub.answers.length} question{sub.answers.length === 1 ? '' : 's'}.
+                            </Typography>
+                          ) : null}
+                          <Box sx={{ mt: 1 }}>
+                            <Button size="small" color="warning" variant="outlined" onClick={() => reopenSubmission('test', activeDetailItem._id, sid)}>Reopen for Student</Button>
+                          </Box>
+                        </Paper>
+                      );
+                    }
+
+                    const key = `${activeDetailItem._id}-${sid}`;
+                    const draft = detailType === 'assignment'
+                      ? (assignmentGradeInputs[key] || { score: sub.score ?? '', feedback: sub.feedback || '' })
+                      : (projectGradeInputs[key] || { score: sub.score ?? '', feedback: sub.feedback || '' });
+                    const locked = isRubricLocked(key);
+                    const selectedRubric = rubricSelections[key] ?? '';
+                    const canSave = !locked || Boolean(selectedRubric);
+
+                    return (
+                      <Paper key={`${activeDetailItem._id}-${sid}`} variant="outlined" sx={{ p: 1.2 }}>
+                        <Typography variant="subtitle2" sx={{ fontWeight: 700, mb: 0.7 }}>{name}</Typography>
+                        {sub.textAnswer && <Typography variant="caption" display="block" sx={{ mb: 0.5 }}>{sub.textAnswer}</Typography>}
+                        {sub.submissionUrl && <Typography variant="caption" display="block" sx={{ mb: 0.8 }}>{sub.submissionUrl}</Typography>}
+
+                        <Grid container spacing={1}>
+                          <Grid item xs={12} sm={3}>
+                            <TextField
+                              fullWidth
+                              size="small"
+                              type="number"
+                              label="Score"
+                              value={draft.score ?? ''}
+                              disabled={locked}
+                              onChange={(e) => {
+                                if (detailType === 'assignment') {
+                                  handleAssignmentGradeChange(activeDetailItem._id, sid, 'score', e.target.value);
+                                } else {
+                                  handleProjectGradeChange(activeDetailItem._id, sid, 'score', e.target.value);
+                                }
+                              }}
+                            />
+                          </Grid>
+                          <Grid item xs={12} sm={5}>
+                            <TextField
+                              fullWidth
+                              size="small"
+                              select
+                              label="Rubric Level"
+                              value={selectedRubric}
+                              onChange={(e) => {
+                                const value = e.target.value;
+                                setRubricSelections((prev) => ({ ...prev, [key]: value }));
+                                if (!value) return;
+                                applyRubricPreset(detailType, activeDetailItem._id, sid, Number(value), maxPoints);
+                              }}
+                            >
+                              <MenuItem value="">Select</MenuItem>
+                              {rubricPresetScores.map((preset) => (
+                                <MenuItem key={`${preset.label}-${preset.percentage}`} value={preset.percentage}>
+                                  {preset.label} ({preset.percentage}%)
+                                </MenuItem>
+                              ))}
+                            </TextField>
+                          </Grid>
+                          <Grid item xs={12} sm={4}>
+                            <TextField
+                              fullWidth
+                              size="small"
+                              label="Feedback"
+                              value={draft.feedback ?? ''}
+                              onChange={(e) => {
+                                if (detailType === 'assignment') {
+                                  handleAssignmentGradeChange(activeDetailItem._id, sid, 'feedback', e.target.value);
+                                } else {
+                                  handleProjectGradeChange(activeDetailItem._id, sid, 'feedback', e.target.value);
+                                }
+                              }}
+                            />
+                          </Grid>
+                        </Grid>
+
+                        <Stack direction="row" spacing={1} sx={{ mt: 1 }}>
+                          <Button size="small" variant="outlined" onClick={() => setRubricLockState(key, !locked)}>
+                            {locked ? 'Unlock Manual Score' : 'Lock to Rubric'}
+                          </Button>
+                          <Button
+                            size="small"
+                            variant="contained"
+                            disabled={!canSave}
+                            onClick={() => {
+                              if (detailType === 'assignment') {
+                                gradeAssignmentSubmission(activeDetailItem._id, sid);
+                              } else {
+                                gradeProjectSubmission(activeDetailItem._id, sid);
+                              }
+                            }}
+                          >
+                            Save Grade
+                          </Button>
+                          <Button size="small" color="warning" variant="outlined" onClick={() => reopenSubmission(detailType, activeDetailItem._id, sid)}>Reopen for Student</Button>
+                        </Stack>
+                      </Paper>
+                    );
+                  })}
+                </Stack>
+              )}
+            </>
+          )}
+        </CardContent>
+      </Card>
+    );
+  };
+
+  const renderLearnerItemList = (type, items) => {
+    const filteredItems = getLearnerFilteredItems(type, items);
+    const typeLabel = type.charAt(0).toUpperCase() + type.slice(1);
+
+    return (
+      <Box>
+        <Grid container spacing={1.5} sx={{ mb: 2 }}>
+          <Grid item xs={12} md={7}>
+            <TextField
+              fullWidth
+              size="small"
+              label={`Search ${typeLabel}s`}
+              value={learnerListQuery[type] || ''}
+              onChange={(e) => setLearnerListQuery((prev) => ({ ...prev, [type]: e.target.value }))}
+            />
+          </Grid>
+          <Grid item xs={12} md={5}>
+            <TextField
+              fullWidth
+              size="small"
+              select
+              label="Filter / Sort"
+              value={learnerListSort[type] || 'newest'}
+              onChange={(e) => setLearnerListSort((prev) => ({ ...prev, [type]: e.target.value }))}
+            >
+              <MenuItem value="newest">Date (Newest)</MenuItem>
+              <MenuItem value="oldest">Date (Oldest)</MenuItem>
+              <MenuItem value="name-asc">Name (A–Z)</MenuItem>
+              <MenuItem value="name-desc">Name (Z–A)</MenuItem>
+              <MenuItem value="incomplete">{type === 'lecture' ? 'Not Watched' : 'Not Submitted'}</MenuItem>
+              <MenuItem value="complete">{type === 'lecture' ? 'Watched' : 'Submitted'}</MenuItem>
+            </TextField>
+          </Grid>
+        </Grid>
+
+        {filteredItems.length === 0 ? (
+          <Typography variant="body2" color="text.secondary">No {typeLabel.toLowerCase()}s found.</Typography>
+        ) : (
+          <Stack spacing={1.2}>
+            {filteredItems.map((item) => {
+              const { done, submission } = getLearnerItemStatus(type, item);
+              const maxPoints = item.maxPoints || item.totalPoints;
+              const isDue = item.dueDate && new Date(item.dueDate) < new Date() && !done;
+
+              const getStatusLabel = () => {
+                if (type === 'lecture') return done ? 'Watched' : 'Not watched';
+                if (!done) return 'Not submitted';
+                if (submission?.score !== null && submission?.score !== undefined && submission?.score !== '') return `Score: ${submission.score}/${maxPoints}`;
+                return 'Submitted';
+              };
+              const getStatusColor = () => {
+                if (!done) return 'default';
+                if (type === 'lecture') return 'success';
+                if (submission?.score !== null && submission?.score !== undefined && submission?.score !== '') return 'success';
+                return 'info';
+              };
+
+              return (
+                <Paper
+                  key={item._id}
+                  variant="outlined"
+                  sx={{ p: 1.8, cursor: 'pointer', transition: 'border-color 0.15s', '&:hover': { borderColor: 'primary.main', backgroundColor: 'rgba(15,76,129,0.03)' } }}
+                  onClick={() => openItemDetails(type, item._id)}
+                >
+                  <Box sx={{ display: 'flex', justifyContent: 'space-between', gap: 1.5, alignItems: 'flex-start', flexWrap: 'wrap' }}>
+                    <Box sx={{ flex: 1, minWidth: 200 }}>
+                      <Typography variant="subtitle1" sx={{ fontWeight: 700 }}>{item.title}</Typography>
+                      {item.description && (
+                        <Typography variant="body2" color="text.secondary" sx={{ mt: 0.3 }}>{item.description}</Typography>
+                      )}
+                      {type === 'assignment' && item.instructions && (
+                        <Typography variant="body2" sx={{ mt: 0.3 }}><strong>Instructions:</strong> {item.instructions}</Typography>
+                      )}
+                      {type === 'project' && item.requirements && (
+                        <Typography variant="body2" sx={{ mt: 0.3 }}><strong>Requirements:</strong> {item.requirements}</Typography>
+                      )}
+                      <Stack direction="row" spacing={0.8} sx={{ mt: 1, flexWrap: 'wrap' }}>
+                        {maxPoints ? <Chip size="small" label={`Max: ${maxPoints}`} /> : null}
+                        {item.submissionType ? <Chip size="small" label={`Submit: ${item.submissionType}`} /> : null}
+                        {type === 'test' && item.questions?.length ? <Chip size="small" label={`${item.questions.length} question${item.questions.length !== 1 ? 's' : ''}`} /> : null}
+                        {type === 'lecture' && item.duration ? <Chip size="small" label={`${item.duration} min`} /> : null}
+                        {item.dueDate ? <Chip size="small" label={`Due: ${new Date(item.dueDate).toLocaleString()}`} color={isDue ? 'error' : 'default'} variant={isDue ? 'filled' : 'outlined'} /> : null}
+                      </Stack>
+                    </Box>
+                    <Chip size="small" label={getStatusLabel()} color={getStatusColor()} variant={done ? 'filled' : 'outlined'} />
+                  </Box>
+                  {submission?.feedback && (
+                    <Typography variant="caption" color="text.secondary" sx={{ mt: 0.8, display: 'block' }}>Feedback: {submission.feedback}</Typography>
+                  )}
+                </Paper>
+              );
+            })}
+          </Stack>
+        )}
+      </Box>
+    );
+  };
+
+  const renderLearnerItemDetail = () => {
+    if (isTeacher || !activeDetailItem) return null;
+    if (getTypeTabIndex(detailType) !== tab) return null;
+
+    const item = activeDetailItem;
+    const typeLabel = detailType.charAt(0).toUpperCase() + detailType.slice(1);
+    const maxPoints = item.maxPoints || item.totalPoints || 100;
+    const { done, submission } = getLearnerItemStatus(detailType, item);
+    const answerDraft = testAnswerDrafts[item._id] || [];
+    const assignDraft = assignmentSubmissionDrafts[item._id] || { textAnswer: '', submissionUrl: '' };
+    const projectDraft = projectSubmissionDrafts[item._id] || { textAnswer: '', submissionUrl: '' };
+
+    return (
+      <Card sx={{ mb: 2 }}>
+        <CardContent>
+          <Button size="small" variant="text" onClick={closeItemDetails} sx={{ mb: 1.5 }}>
+            ← Back to {typeLabel}s
+          </Button>
+
+          <Box sx={{ display: 'flex', justifyContent: 'space-between', gap: 1, flexWrap: 'wrap', alignItems: 'flex-start', mb: 1 }}>
+            <Typography variant="h5" sx={{ fontWeight: 700 }}>{item.title}</Typography>
+            <Chip
+              label={done ? (detailType === 'lecture' ? 'Watched' : 'Submitted') : (detailType === 'lecture' ? 'Not watched' : 'Not submitted')}
+              color={done ? 'success' : 'default'}
+              variant={done ? 'filled' : 'outlined'}
+            />
+          </Box>
+
+          {item.description && (
+            <Typography variant="body2" color="text.secondary" sx={{ mb: 1 }}>{item.description}</Typography>
+          )}
+          {detailType === 'assignment' && item.instructions && (
+            <Typography variant="body2" sx={{ mb: 0.6 }}><strong>Instructions:</strong> {item.instructions}</Typography>
+          )}
+          {detailType === 'project' && item.requirements && (
+            <Typography variant="body2" sx={{ mb: 0.6 }}><strong>Requirements:</strong> {item.requirements}</Typography>
+          )}
+
+          <Stack direction="row" spacing={0.8} sx={{ mb: 2, flexWrap: 'wrap' }}>
+            {detailType !== 'lecture' && maxPoints ? <Chip size="small" label={`Max: ${maxPoints}`} /> : null}
+            {item.submissionType ? <Chip size="small" label={`Submit: ${item.submissionType}`} /> : null}
+            {detailType === 'test' ? <Chip size="small" label={item.autoGrade !== false ? 'Auto-graded' : 'Manual review'} /> : null}
+            {detailType === 'test' && item.questions?.length ? <Chip size="small" label={`${item.questions.length} question${item.questions.length !== 1 ? 's' : ''}`} /> : null}
+            {detailType === 'lecture' && item.duration ? <Chip size="small" label={`Duration: ${item.duration} min`} /> : null}
+            {item.dueDate ? <Chip size="small" label={`Due: ${new Date(item.dueDate).toLocaleString()}`} /> : null}
+          </Stack>
+
+          {/* LECTURE */}
+          {detailType === 'lecture' && (
+            <Box>
+              {item.videoUrl ? (
+                isDirectVideoUrl(item.videoUrl) ? (
+                  <Box sx={{ mb: 2 }}>
+                    <video
+                      controls
+                      style={{ width: '100%', maxHeight: 360, borderRadius: 8, background: '#000' }}
+                      onTimeUpdate={(e) => handleVideoTimeUpdate(e, item._id)}
+                    >
+                      <source src={item.videoUrl} />
+                      Your browser does not support the video tag.
+                    </video>
+                    {!unlockedLectures.has(item._id) && !done && (
+                      <Typography variant="caption" color="text.secondary" sx={{ mt: 0.5, display: 'block' }}>
+                        Watch at least 50% of the video to mark it as complete.
+                      </Typography>
+                    )}
+                  </Box>
+                ) : (
+                  <Box sx={{ mb: 2 }}>
+                    <Button
+                      variant="contained"
+                      href={item.videoUrl}
+                      target="_blank"
+                      rel="noreferrer"
+                      onClick={() => unlockLecture(item._id)}
+                    >
+                      Watch Lecture
+                    </Button>
+                    {!unlockedLectures.has(item._id) && !done && (
+                      <Typography variant="caption" color="text.secondary" sx={{ mt: 0.5, display: 'block' }}>
+                        Click "Watch Lecture" to unlock completion.
+                      </Typography>
+                    )}
+                  </Box>
+                )
+              ) : (
+                <Alert severity="info" sx={{ mb: 2 }}>No video available yet.</Alert>
+              )}
+              {isApproved && (
+                <Stack direction="row" spacing={1} alignItems="center">
+                  <Chip label={done ? 'Marked as watched' : 'Not watched yet'} color={done ? 'success' : 'default'} variant={done ? 'filled' : 'outlined'} size="small" />
+                  {done ? (
+                    <Button size="small" variant="outlined" onClick={() => toggleLectureComplete(item._id, false)}>
+                      Mark Incomplete
+                    </Button>
+                  ) : (
+                    <Button
+                      size="small"
+                      variant="outlined"
+                      disabled={!unlockedLectures.has(item._id)}
+                      onClick={() => toggleLectureComplete(item._id, true)}
+                    >
+                      Mark Complete
+                    </Button>
+                  )}
+                </Stack>
+              )}
+            </Box>
+          )}
+
+          {/* ASSIGNMENT */}
+          {detailType === 'assignment' && isApproved && (
+            submission ? (
+              <Box sx={{ mt: 1 }}>
+                <Alert severity="warning" sx={{ mb: 1.5 }}>This assignment has been submitted and cannot be changed. Contact your instructor if you need to resubmit.</Alert>
+                {submission.textAnswer && <Typography variant="body2" sx={{ mb: 0.5 }}><strong>Your answer:</strong> {submission.textAnswer}</Typography>}
+                {submission.submissionUrl && <Typography variant="body2" sx={{ mb: 0.8 }}><strong>Submitted:</strong> <a href={submission.submissionUrl} target="_blank" rel="noreferrer">{submission.submissionUrl}</a></Typography>}
+                {(submission.score !== null && submission.score !== undefined && submission.score !== '') ? (
+                  <Alert severity="success" sx={{ mt: 1 }}>Score: {submission.score} / {maxPoints}{submission.feedback ? ` — Feedback: ${submission.feedback}` : ''}</Alert>
+                ) : (
+                  <Alert severity="info" sx={{ mt: 1 }}>Submitted — awaiting grade.</Alert>
+                )}
+              </Box>
+            ) : (
+              <LearnerSubmissionSection
+                submissionType={item.submissionType}
+                itemId={item._id}
+                itemLabel="assignment"
+                draft={assignDraft}
+                onDraftChange={(nextDraft) => setAssignmentSubmissionDrafts((prev) => ({ ...prev, [item._id]: nextDraft }))}
+                onFileUpload={(file) => handleSubmissionFileUpload('assignment', item._id, file)}
+                onSubmit={() => handleAssignmentSubmit(item._id)}
+                uploadingKey={uploadingKey}
+                mySubmission={null}
+                maxPoints={maxPoints}
+              />
+            )
+          )}
+
+          {/* PROJECT */}
+          {detailType === 'project' && isApproved && (
+            submission ? (
+              <Box sx={{ mt: 1 }}>
+                <Alert severity="warning" sx={{ mb: 1.5 }}>This project has been submitted and cannot be changed. Contact your instructor if you need to resubmit.</Alert>
+                {submission.textAnswer && <Typography variant="body2" sx={{ mb: 0.5 }}><strong>Your answer:</strong> {submission.textAnswer}</Typography>}
+                {submission.submissionUrl && <Typography variant="body2" sx={{ mb: 0.8 }}><strong>Submitted:</strong> <a href={submission.submissionUrl} target="_blank" rel="noreferrer">{submission.submissionUrl}</a></Typography>}
+                {(submission.score !== null && submission.score !== undefined && submission.score !== '') ? (
+                  <Alert severity="success" sx={{ mt: 1 }}>Score: {submission.score} / {maxPoints}{submission.feedback ? ` — Feedback: ${submission.feedback}` : ''}</Alert>
+                ) : (
+                  <Alert severity="info" sx={{ mt: 1 }}>Submitted — awaiting grade.</Alert>
+                )}
+              </Box>
+            ) : (
+              <LearnerSubmissionSection
+                submissionType={item.submissionType}
+                itemId={item._id}
+                itemLabel="project"
+                draft={projectDraft}
+                onDraftChange={(nextDraft) => setProjectSubmissionDrafts((prev) => ({ ...prev, [item._id]: nextDraft }))}
+                onFileUpload={(file) => handleSubmissionFileUpload('project', item._id, file)}
+                onSubmit={() => handleProjectSubmit(item._id)}
+                uploadingKey={uploadingKey}
+                mySubmission={null}
+                maxPoints={maxPoints}
+              />
+            )
+          )}
+
+          {/* TEST */}
+          {detailType === 'test' && isApproved && (
+            submission ? (
+              <Box sx={{ mt: 1 }}>
+                <Alert severity="warning" sx={{ mb: 1.5 }}>This test has been submitted and cannot be retaken. Contact your instructor if you need to retake it.</Alert>
+                {(submission.score !== null && submission.score !== undefined) ? (
+                  <Alert severity="success" sx={{ mt: 1 }}>Score: {submission.score} / {submission.maxScore || item.totalPoints || 0}{submission.feedback ? ` — Feedback: ${submission.feedback}` : ''}</Alert>
+                ) : (
+                  <Alert severity="info" sx={{ mt: 1 }}>Submitted — awaiting manual grade.</Alert>
+                )}
+              </Box>
+            ) : (
+              <Box sx={{ mt: 1 }}>
+                <Typography variant="subtitle1" sx={{ fontWeight: 700, mb: 1.5 }}>Questions</Typography>
+                {(item.questions || []).map((q, qIdx) => (
+                  <Paper key={`${item._id}-q-${qIdx}`} sx={{ mb: 2, p: 1.5, border: '1px solid', borderColor: 'divider' }}>
+                    <Typography variant="body2" sx={{ fontWeight: 700 }}>Q{qIdx + 1}. {q.question}</Typography>
+                    <TextField
+                      fullWidth
+                      select
+                      size="small"
+                      sx={{ mt: 1 }}
+                      label="Select answer"
+                      value={answerDraft[qIdx] || ''}
+                      onChange={(e) => handleTestAnswerChange(item._id, qIdx, e.target.value)}
+                    >
+                      {(q.options || []).map((opt) => (
+                        <MenuItem key={`${item._id}-${qIdx}-${opt}`} value={opt}>{opt}</MenuItem>
+                      ))}
+                    </TextField>
+                  </Paper>
+                ))}
+                <Button variant="contained" size="small" onClick={() => handleTestSubmit(item._id)}>Submit Test</Button>
+              </Box>
+            )
+          )}
+
+          {!isApproved && (
+            <Alert severity="warning" sx={{ mt: 1 }}>Enroll in this course to {detailType === 'lecture' ? 'track lecture progress' : 'submit your work'}.</Alert>
+          )}
+        </CardContent>
+      </Card>
+    );
+  };
+
   return (
     <Container maxWidth="lg" sx={{ pb: 4 }} className="fade-in">
       <Box className="page-hero">
@@ -1159,6 +2149,55 @@ const CourseDetails = () => {
           )}
         </Box>
       </Box>
+
+      {course.instructor && (
+        <Paper
+          sx={{
+            mb: 2.5,
+            p: 2.5,
+            borderRadius: 3,
+            border: '1px solid',
+            borderColor: 'divider',
+            background: 'linear-gradient(180deg, rgba(11, 63, 107, 0.03), rgba(31, 122, 182, 0.01))'
+          }}
+        >
+          <Grid container spacing={2.5} alignItems="center">
+            <Grid item xs={12} md={8}>
+              <Stack direction="row" spacing={2} alignItems="center">
+                <Avatar
+                  src={instructorProfile.avatar || ''}
+                  sx={{ width: 68, height: 68, fontSize: 24, fontWeight: 800, bgcolor: 'primary.main' }}
+                >
+                  {getPersonInitials(course.instructor?.name)}
+                </Avatar>
+                <Box>
+                  <Typography variant="overline" color="text.secondary">
+                    {instructorRole === 'admin' ? 'Course Lead' : 'Instructor'}
+                  </Typography>
+                  <Typography variant="h6" sx={{ fontWeight: 800 }}>
+                    {course.instructor?.name}
+                  </Typography>
+                  <Stack direction="row" spacing={1} sx={{ mt: 0.6, flexWrap: 'wrap' }}>
+                    <Chip size="small" label={instructorProfile.title || instructorRoleLabel} />
+                    {instructorProfile.degree && <Chip size="small" label={instructorProfile.degree} variant="outlined" />}
+                  </Stack>
+                </Box>
+              </Stack>
+            </Grid>
+            <Grid item xs={12} md={4}>
+              <Paper variant="outlined" sx={{ p: 1.5, borderRadius: 2.5, backgroundColor: 'rgba(255,255,255,0.7)' }}>
+                <Typography variant="caption" color="text.secondary">Contact</Typography>
+                <Typography variant="body2" sx={{ mt: 0.5, fontWeight: 600 }}>{course.instructor?.email}</Typography>
+              </Paper>
+            </Grid>
+            <Grid item xs={12}>
+              <Typography variant="body2" color="text.secondary">
+                {instructorProfile.bio || 'This instructor has not added a public teaching bio yet.'}
+              </Typography>
+            </Grid>
+          </Grid>
+        </Paper>
+      )}
 
       {successMessage && <Alert severity="success" sx={{ mb: 2 }}>{successMessage}</Alert>}
       {!user && <Alert severity="info" sx={{ mb: 2 }}>Log in to enroll and access content.</Alert>}
@@ -1313,7 +2352,6 @@ const CourseDetails = () => {
           {isTeacher && (
             <ComposerCard
               title="Create Lecture"
-              description="Use the same structure as the rest of the course content: lecture details first, then delivery information."
               actionLabel="Create Lecture"
               onAction={handleAddLecture}
             >
@@ -1329,42 +2367,47 @@ const CourseDetails = () => {
                   </Grid>
                 </Grid>
                 <ComposerSection title="Delivery Setup">
-                  <TextField fullWidth label="Video URL" value={lectureForm.videoUrl} onChange={(e) => setLectureForm({ ...lectureForm, videoUrl: e.target.value })} />
+                  <Stack direction="row" spacing={1} sx={{ mb: 1.5 }}>
+                    <Button size="small" variant={lectureVideoMode === 'url' ? 'contained' : 'outlined'} onClick={() => setLectureVideoMode('url')}>Link (URL)</Button>
+                    <Button size="small" variant={lectureVideoMode === 'upload' ? 'contained' : 'outlined'} onClick={() => setLectureVideoMode('upload')}>Upload File</Button>
+                  </Stack>
+                  {lectureVideoMode === 'url' ? (
+                    <TextField fullWidth label="Video URL" value={lectureForm.videoUrl} onChange={(e) => setLectureForm({ ...lectureForm, videoUrl: e.target.value })} />
+                  ) : (
+                    <Box>
+                      <input
+                        type="file"
+                        id="lecture-file-upload"
+                        accept="video/mp4,video/webm,video/ogg,application/pdf"
+                        style={{ display: 'none' }}
+                        onChange={handleLectureFileUpload}
+                      />
+                      <Stack direction="row" spacing={2} alignItems="center">
+                        <label htmlFor="lecture-file-upload">
+                          <Button component="span" variant="outlined" disabled={lectureUploading}>Choose File</Button>
+                        </label>
+                        {lectureUploading && <CircularProgress size={20} />}
+                        {lectureUploadedFile && !lectureUploading && (
+                          <Typography variant="body2" color="success.main">✓ {lectureUploadedFile}</Typography>
+                        )}
+                        {!lectureUploadedFile && !lectureUploading && (
+                          <Typography variant="body2" color="text.secondary">No file chosen</Typography>
+                        )}
+                      </Stack>
+                    </Box>
+                  )}
                 </ComposerSection>
             </ComposerCard>
           )}
 
-          {(course.lectures || []).length > 0 ? course.lectures.map((lecture) => {
-            const isDone = completedLectureIds.has(String(lecture._id));
-            return (
-              <ContentCard
-                key={lecture._id}
-                title={lecture.title}
-                description={lecture.description}
-                chips={[
-                  lecture.duration ? <Chip key="duration" label={`Duration: ${lecture.duration} min`} size="small" /> : null,
-                  lecture.videoUrl ? <Chip key="video" label="Video lesson" size="small" /> : <Chip key="novideo" label="No video link" size="small" variant="outlined" />
-                ].filter(Boolean)}
-                actions={[
-                  lecture.videoUrl ? <Button key="watch" size="small" href={lecture.videoUrl} target="_blank">Watch</Button> : null,
-                  isTeacher ? <Button key="edit" size="small" onClick={() => openLectureEditor(lecture)}>Edit</Button> : null,
-                  isTeacher ? <Button key="delete" size="small" color="error" onClick={() => handleDeleteLecture(lecture._id, lecture.title)}>Delete</Button> : null
-                ].filter(Boolean)}
-              >
+          {isTeacher && renderTeacherDetailPage()}
 
-                {isApproved && !isTeacher && (
-                  <LowerSection title="Learning Status">
-                    <Stack direction="row" spacing={1} sx={{ flexWrap: 'wrap' }}>
-                      <Chip label={isDone ? 'Completed' : 'Not completed'} color={isDone ? 'success' : 'default'} variant={isDone ? 'filled' : 'outlined'} size="small" />
-                      <Button size="small" variant="outlined" onClick={() => toggleLectureComplete(lecture._id, !isDone)}>
-                        {isDone ? 'Mark Incomplete' : 'Mark Complete'}
-                      </Button>
-                    </Stack>
-                  </LowerSection>
-                )}
-              </ContentCard>
-            );
-          }) : <Typography>No lectures yet.</Typography>}
+          {isTeacher && !isDetailActiveForCurrentTab && renderTeacherCreatedList('lecture', course.lectures || [], {
+            listTitle: 'Created Lectures'
+          })}
+
+          {!isTeacher && isDetailActiveForCurrentTab && renderLearnerItemDetail()}
+          {!isTeacher && !isDetailActiveForCurrentTab && renderLearnerItemList('lecture', course.lectures || [])}
         </Box>
       )}
 
@@ -1375,7 +2418,6 @@ const CourseDetails = () => {
           {isTeacher && (
             <ComposerCard
               title="Create Assignment"
-              description="Fill out the core details first, then define how students should submit their work."
               actionLabel="Create Assignment"
               onAction={handleAddAssignment}
             >
@@ -1413,86 +2455,14 @@ const CourseDetails = () => {
             </ComposerCard>
           )}
 
-          {(course.assignments || []).length > 0 ? course.assignments.map((assignment) => {
-            const mySubmission = getMyAssignmentSubmission(assignment);
-            const submissionDraft = assignmentSubmissionDrafts[assignment._id] || { textAnswer: '', submissionUrl: '' };
+          {isTeacher && renderTeacherDetailPage()}
 
-            return (
-              <ContentCard
-                key={assignment._id}
-                title={assignment.title}
-                description={assignment.description}
-                extraContent={assignment.instructions ? <Typography variant="caption" sx={{ mt: 0.5, display: 'block' }}><strong>Instructions:</strong> {assignment.instructions}</Typography> : null}
-                chips={[
-                  <Chip key="max" label={`Max: ${assignment.maxPoints || 100}`} size="small" />,
-                  <Chip key="submit" label={`Submit: ${assignment.submissionType || 'text'}`} size="small" />,
-                  assignment.dueDate ? <Chip key="due" label={`Due: ${new Date(assignment.dueDate).toLocaleString()}`} size="small" /> : null
-                ].filter(Boolean)}
-                actions={[
-                  <Button key="details" size="small" onClick={() => openAssessmentDetails('assignment', assignment)}>Details</Button>,
-                  isTeacher ? <Button key="edit" size="small" onClick={() => openAssessmentEditor('assignment', assignment)}>Edit</Button> : null,
-                  isTeacher ? <Button key="delete" size="small" color="error" onClick={() => handleDeleteAssessment('assignment', assignment._id, assignment.title)}>Delete</Button> : null
-                ].filter(Boolean)}
-              >
+          {isTeacher && !isDetailActiveForCurrentTab && renderTeacherCreatedList('assignment', course.assignments || [], {
+            listTitle: 'Created Assignments'
+          })}
 
-                {isApproved && !isTeacher && (
-                  <LearnerSubmissionSection
-                    submissionType={assignment.submissionType}
-                    itemId={assignment._id}
-                    itemLabel="assignment"
-                    draft={submissionDraft}
-                    onDraftChange={(nextDraft) => setAssignmentSubmissionDrafts((prev) => ({
-                      ...prev,
-                      [assignment._id]: nextDraft
-                    }))}
-                    onFileUpload={(file) => handleSubmissionFileUpload('assignment', assignment._id, file)}
-                    onSubmit={() => handleAssignmentSubmit(assignment._id)}
-                    uploadingKey={uploadingKey}
-                    mySubmission={mySubmission}
-                    maxPoints={assignment.maxPoints || 100}
-                  />
-                )}
-
-                {isTeacher && (
-                  <CardContent sx={{ pt: 1.5 }}>
-                    <Divider sx={{ mb: 1.5 }} />
-                    <Typography variant="subtitle2" sx={{ mb: 1.5, fontWeight: 600 }}>Submissions Overview</Typography>
-                    <SubmissionStatsGrid stats={getSubmissionStats(assignment.submissions || [], assignment.maxPoints || 100)} />
-
-                    {(assignment.submissions || []).length === 0 ? (
-                      <Typography variant="body2">No submissions yet.</Typography>
-                    ) : (
-                      <Stack spacing={1.2}>
-                        {(assignment.submissions || []).map((sub) => {
-                          const sid = sub.student?._id || sub.student;
-                          const sname = sub.student?.name || sid;
-                          const isGraded = sub.score !== null && sub.score !== undefined && sub.score !== '';
-
-                          return (
-                            <SubmissionListItem
-                              key={`${assignment._id}-${sid}`}
-                              name={sname}
-                              chips={[
-                                <Chip
-                                  key="score"
-                                  size="small"
-                                  label={isGraded ? `${sub.score}/${assignment.maxPoints || 100}` : 'Pending'}
-                                  color={isGraded ? 'success' : 'default'}
-                                  variant={isGraded ? 'filled' : 'outlined'}
-                                />,
-                                sub.feedback ? <Chip key="feedback" size="small" label="Feedback" variant="filled" color="info" /> : null
-                              ].filter(Boolean)}
-                              action={<Button size="small" variant="contained" onClick={() => openAssessmentDetails('assignment', assignment, sid)}>Grade</Button>}
-                            />
-                          );
-                        })}
-                      </Stack>
-                    )}
-                  </CardContent>
-                )}
-              </ContentCard>
-            );
-          }) : <Typography>No assignments yet.</Typography>}
+          {!isTeacher && isDetailActiveForCurrentTab && renderLearnerItemDetail()}
+          {!isTeacher && !isDetailActiveForCurrentTab && renderLearnerItemList('assignment', course.assignments || [])}
         </Box>
       )}
 
@@ -1503,7 +2473,6 @@ const CourseDetails = () => {
           {isTeacher && (
             <ComposerCard
               title="Create Test"
-              description="Set the test details, then add questions one by one in a clear draft list."
               actionLabel="Publish Test"
               onAction={handleAddTest}
             >
@@ -1536,83 +2505,15 @@ const CourseDetails = () => {
             </ComposerCard>
           )}
 
-          {(course.tests || []).length > 0 ? course.tests.map((test) => {
-            const mySubmission = getMyTestSubmission(test);
-            const answerDraft = testAnswerDrafts[test._id] || [];
-            return (
-              <ContentCard
-                key={test._id}
-                title={test.title}
-                description={test.description}
-                chips={[
-                  <Chip key="questions" label={`Questions: ${(test.questions || []).length}`} size="small" />,
-                  <Chip key="points" label={`Points: ${test.totalPoints || 0}`} size="small" />,
-                  <Chip key="grading" label={test.autoGrade !== false ? 'Auto-graded' : 'Manual review'} size="small" />,
-                  test.dueDate ? <Chip key="due" label={`Due: ${new Date(test.dueDate).toLocaleString()}`} size="small" /> : null
-                ].filter(Boolean)}
-                actions={isTeacher ? [
-                  <Button key="edit" size="small" onClick={() => openAssessmentEditor('test', test)}>Edit</Button>,
-                  <Button key="delete" size="small" color="error" onClick={() => handleDeleteAssessment('test', test._id, test.title)}>Delete</Button>
-                ] : []}
-              >
+          {isTeacher && renderTeacherDetailPage()}
 
-                {isApproved && !isTeacher && (
-                  <LowerSection title="Your Attempt">
-                    {(test.questions || []).map((q, index) => (
-                      <Paper key={`${test._id}-q-${index}`} sx={{ mb: 2, p: 1.5, border: '1px solid', borderColor: 'divider' }}>
-                        <Typography variant="body2" sx={{ fontWeight: 700 }}><strong>Q{index + 1}.</strong> {q.question}</Typography>
-                        <TextField
-                          fullWidth
-                          select
-                          size="small"
-                          sx={{ mt: 1 }}
-                          label="Select answer"
-                          value={answerDraft[index] || ''}
-                          onChange={(e) => handleTestAnswerChange(test._id, index, e.target.value)}
-                        >
-                          {(q.options || []).map((opt) => (
-                            <MenuItem key={`${test._id}-${index}-${opt}`} value={opt}>{opt}</MenuItem>
-                          ))}
-                        </TextField>
-                      </Paper>
-                    ))}
-                    <Button variant="contained" size="small" onClick={() => handleTestSubmit(test._id)}>Submit Test</Button>
-                    {mySubmission && (
-                      <Alert severity="success" sx={{ mt: 1.5, py: 1 }}>
-                        <Typography variant="caption">
-                          Latest score: {mySubmission.score}/{mySubmission.maxScore || test.totalPoints || 0}
-                        </Typography>
-                      </Alert>
-                    )}
-                  </LowerSection>
-                )}
+          {isTeacher && !isDetailActiveForCurrentTab && renderTeacherCreatedList('test', course.tests || [], {
+            listTitle: 'Created Tests',
+            maxPointsField: 'totalPoints'
+          })}
 
-                {isTeacher && (
-                  <CardContent sx={{ pt: 1.5 }}>
-                    <Divider sx={{ mb: 1.5 }} />
-                    <Typography variant="subtitle2" sx={{ mb: 1.5, fontWeight: 600 }}>Submissions Overview</Typography>
-                    <SubmissionStatsGrid stats={getSubmissionStats(test.submissions || [], test.totalPoints || 0)} />
-                    {(test.submissions || []).length === 0 ? (
-                      <Typography variant="body2">No submissions yet.</Typography>
-                    ) : (
-                      <Stack spacing={1.2}>
-                        {test.submissions.map((sub) => (
-                          <SubmissionListItem
-                            key={`${test._id}-${sub.student?._id || sub.student}`}
-                            name={sub.student?.name || 'Student'}
-                            chips={[
-                              <Chip key="score" size="small" label={`${sub.score}/${sub.maxScore || test.totalPoints || 0}`} color="success" />,
-                              <Chip key="grading" size="small" label={sub.autoGraded ? 'Auto-graded' : 'Reviewed'} variant="outlined" />
-                            ]}
-                          />
-                        ))}
-                      </Stack>
-                    )}
-                  </CardContent>
-                )}
-              </ContentCard>
-            );
-          }) : <Typography>No tests yet.</Typography>}
+          {!isTeacher && isDetailActiveForCurrentTab && renderLearnerItemDetail()}
+          {!isTeacher && !isDetailActiveForCurrentTab && renderLearnerItemList('test', course.tests || [])}
         </Box>
       )}
 
@@ -1623,7 +2524,6 @@ const CourseDetails = () => {
           {isTeacher && (
             <ComposerCard
               title="Create Project"
-              description="Lay out the brief clearly so students can understand the goal, requirements, and submission method quickly."
               actionLabel="Create Project"
               onAction={handleAddProject}
             >
@@ -1661,86 +2561,14 @@ const CourseDetails = () => {
             </ComposerCard>
           )}
 
-          {(course.projects || []).length > 0 ? course.projects.map((project) => {
-            const mySubmission = getMyProjectSubmission(project);
-            const submissionDraft = projectSubmissionDrafts[project._id] || { textAnswer: '', submissionUrl: '' };
+          {isTeacher && renderTeacherDetailPage()}
 
-            return (
-              <ContentCard
-                key={project._id}
-                title={project.title}
-                description={project.description}
-                extraContent={project.requirements ? <Typography variant="caption" sx={{ mt: 0.5, display: 'block' }}><strong>Requirements:</strong> {project.requirements}</Typography> : null}
-                chips={[
-                  <Chip key="max" label={`Max: ${project.maxPoints || 100}`} size="small" />,
-                  <Chip key="submit" label={`Submit: ${project.submissionType || 'text'}`} size="small" />,
-                  project.dueDate ? <Chip key="due" label={`Due: ${new Date(project.dueDate).toLocaleString()}`} size="small" /> : null
-                ].filter(Boolean)}
-                actions={[
-                  <Button key="details" size="small" onClick={() => openAssessmentDetails('project', project)}>Details</Button>,
-                  isTeacher ? <Button key="edit" size="small" onClick={() => openAssessmentEditor('project', project)}>Edit</Button> : null,
-                  isTeacher ? <Button key="delete" size="small" color="error" onClick={() => handleDeleteAssessment('project', project._id, project.title)}>Delete</Button> : null
-                ].filter(Boolean)}
-              >
+          {isTeacher && !isDetailActiveForCurrentTab && renderTeacherCreatedList('project', course.projects || [], {
+            listTitle: 'Created Projects'
+          })}
 
-                {isApproved && !isTeacher && (
-                  <LearnerSubmissionSection
-                    submissionType={project.submissionType}
-                    itemId={project._id}
-                    itemLabel="project"
-                    draft={submissionDraft}
-                    onDraftChange={(nextDraft) => setProjectSubmissionDrafts((prev) => ({
-                      ...prev,
-                      [project._id]: nextDraft
-                    }))}
-                    onFileUpload={(file) => handleSubmissionFileUpload('project', project._id, file)}
-                    onSubmit={() => handleProjectSubmit(project._id)}
-                    uploadingKey={uploadingKey}
-                    mySubmission={mySubmission}
-                    maxPoints={project.maxPoints || 100}
-                  />
-                )}
-
-                {isTeacher && (
-                  <CardContent>
-                    <Divider sx={{ mb: 2 }} />
-                    <Typography variant="subtitle1" sx={{ mb: 1.5 }}>Submissions Overview</Typography>
-                    <SubmissionStatsGrid stats={getSubmissionStats(project.submissions || [], project.maxPoints || 100)} />
-
-                    {(project.submissions || []).length === 0 ? (
-                      <Typography variant="body2">No submissions yet.</Typography>
-                    ) : (
-                      <Stack spacing={1.2}>
-                        {(project.submissions || []).map((sub) => {
-                          const sid = sub.student?._id || sub.student;
-                          const sname = sub.student?.name || sid;
-                          const isGraded = sub.score !== null && sub.score !== undefined && sub.score !== '';
-
-                          return (
-                            <SubmissionListItem
-                              key={`${project._id}-${sid}`}
-                              name={sname}
-                              chips={[
-                                <Chip
-                                  key="score"
-                                  size="small"
-                                  label={isGraded ? `${sub.score}/${project.maxPoints || 100}` : 'Pending'}
-                                  color={isGraded ? 'success' : 'default'}
-                                  variant={isGraded ? 'filled' : 'outlined'}
-                                />,
-                                sub.feedback ? <Chip key="feedback" size="small" label="Feedback" variant="filled" color="info" /> : null
-                              ].filter(Boolean)}
-                              action={<Button size="small" variant="contained" onClick={() => openAssessmentDetails('project', project, sid)}>Grade</Button>}
-                            />
-                          );
-                        })}
-                      </Stack>
-                    )}
-                  </CardContent>
-                )}
-              </ContentCard>
-            );
-          }) : <Typography>No projects yet.</Typography>}
+          {!isTeacher && isDetailActiveForCurrentTab && renderLearnerItemDetail()}
+          {!isTeacher && !isDetailActiveForCurrentTab && renderLearnerItemList('project', course.projects || [])}
         </Box>
       )}
 
@@ -1815,19 +2643,137 @@ const CourseDetails = () => {
             </Box>
           ) : (
             <Box>
-              <Card sx={{ mb: 2 }}>
-                <CardContent>
-                  <Typography variant="h6">Final Course Grade</Typography>
-                  <Typography variant="h4" sx={{ mt: 1 }}>
-                    {course.grades?.find((g) => (g.student?._id || g.student) === currentUserId)?.grade || 'Not assigned'}
-                  </Typography>
-                  {course.grades?.find((g) => (g.student?._id || g.student) === currentUserId)?.feedback && (
-                    <Typography variant="body2" sx={{ mt: 1 }}>
-                      Feedback: {course.grades?.find((g) => (g.student?._id || g.student) === currentUserId)?.feedback}
-                    </Typography>
-                  )}
-                </CardContent>
-              </Card>
+              {(() => {
+                const myGrade = course.grades?.find((g) => (g.student?._id || g.student) === currentUserId);
+                return (
+                  <Card sx={{ mb: 2 }}>
+                    <CardContent>
+                      <Typography variant="h6">Final Course Grade</Typography>
+                      <Typography variant="h4" sx={{ mt: 1 }}>{myGrade?.grade || 'Not assigned'}</Typography>
+                      {myGrade?.feedback && (
+                        <Typography variant="body2" sx={{ mt: 1 }}>Feedback: {myGrade.feedback}</Typography>
+                      )}
+                    </CardContent>
+                  </Card>
+                );
+              })()}
+
+              {(course.lectures || []).length > 0 && (
+                <Card sx={{ mb: 2 }}>
+                  <CardContent>
+                    <Typography variant="h6" sx={{ mb: 1 }}>Lectures</Typography>
+                    <Chip label={`${completedLectureIds.size} / ${course.lectures.length} watched`} color="info" variant="outlined" />
+                  </CardContent>
+                </Card>
+              )}
+
+              {(course.assignments || []).length > 0 && (
+                <Card sx={{ mb: 2 }}>
+                  <CardContent>
+                    <Typography variant="h6" sx={{ mb: 1.5 }}>Assignments</Typography>
+                    <Stack spacing={1}>
+                      {course.assignments.map((assignment) => {
+                        const sub = getMyAssignmentSubmission(assignment);
+                        const isGraded = sub && sub.score !== null && sub.score !== undefined && sub.score !== '';
+                        return (
+                          <Paper key={assignment._id} variant="outlined" sx={{ p: 1.2 }}>
+                            <Box sx={{ display: 'flex', justifyContent: 'space-between', gap: 1, alignItems: 'flex-start', flexWrap: 'wrap' }}>
+                              <Box sx={{ flex: 1 }}>
+                                <Typography variant="subtitle2" sx={{ fontWeight: 600 }}>{assignment.title}</Typography>
+                                {assignment.dueDate && <Typography variant="caption" color="text.secondary">Due: {new Date(assignment.dueDate).toLocaleString()}</Typography>}
+                              </Box>
+                              <Box sx={{ textAlign: 'right' }}>
+                                {isGraded ? (
+                                  <>
+                                    <Typography variant="subtitle1" sx={{ fontWeight: 700, color: 'success.main' }}>{sub.score} / {assignment.maxPoints || 100}</Typography>
+                                    {sub.feedback && <Typography variant="caption" color="text.secondary" sx={{ display: 'block' }}>{sub.feedback}</Typography>}
+                                  </>
+                                ) : sub ? (
+                                  <Chip size="small" label="Awaiting grade" color="warning" variant="outlined" />
+                                ) : (
+                                  <Chip size="small" label="Not submitted" variant="outlined" />
+                                )}
+                              </Box>
+                            </Box>
+                          </Paper>
+                        );
+                      })}
+                    </Stack>
+                  </CardContent>
+                </Card>
+              )}
+
+              {(course.tests || []).length > 0 && (
+                <Card sx={{ mb: 2 }}>
+                  <CardContent>
+                    <Typography variant="h6" sx={{ mb: 1.5 }}>Tests</Typography>
+                    <Stack spacing={1}>
+                      {course.tests.map((test) => {
+                        const sub = getMyTestSubmission(test);
+                        const isGraded = sub && sub.score !== null && sub.score !== undefined;
+                        return (
+                          <Paper key={test._id} variant="outlined" sx={{ p: 1.2 }}>
+                            <Box sx={{ display: 'flex', justifyContent: 'space-between', gap: 1, alignItems: 'flex-start', flexWrap: 'wrap' }}>
+                              <Box sx={{ flex: 1 }}>
+                                <Typography variant="subtitle2" sx={{ fontWeight: 600 }}>{test.title}</Typography>
+                                {test.dueDate && <Typography variant="caption" color="text.secondary">Due: {new Date(test.dueDate).toLocaleString()}</Typography>}
+                              </Box>
+                              <Box sx={{ textAlign: 'right' }}>
+                                {isGraded ? (
+                                  <>
+                                    <Typography variant="subtitle1" sx={{ fontWeight: 700, color: 'success.main' }}>{sub.score} / {sub.maxScore || test.totalPoints || 0}</Typography>
+                                    {sub.feedback && <Typography variant="caption" color="text.secondary" sx={{ display: 'block' }}>{sub.feedback}</Typography>}
+                                  </>
+                                ) : sub ? (
+                                  <Chip size="small" label="Awaiting grade" color="warning" variant="outlined" />
+                                ) : (
+                                  <Chip size="small" label="Not submitted" variant="outlined" />
+                                )}
+                              </Box>
+                            </Box>
+                          </Paper>
+                        );
+                      })}
+                    </Stack>
+                  </CardContent>
+                </Card>
+              )}
+
+              {(course.projects || []).length > 0 && (
+                <Card sx={{ mb: 2 }}>
+                  <CardContent>
+                    <Typography variant="h6" sx={{ mb: 1.5 }}>Projects</Typography>
+                    <Stack spacing={1}>
+                      {course.projects.map((project) => {
+                        const sub = getMyProjectSubmission(project);
+                        const isGraded = sub && sub.score !== null && sub.score !== undefined && sub.score !== '';
+                        return (
+                          <Paper key={project._id} variant="outlined" sx={{ p: 1.2 }}>
+                            <Box sx={{ display: 'flex', justifyContent: 'space-between', gap: 1, alignItems: 'flex-start', flexWrap: 'wrap' }}>
+                              <Box sx={{ flex: 1 }}>
+                                <Typography variant="subtitle2" sx={{ fontWeight: 600 }}>{project.title}</Typography>
+                                {project.dueDate && <Typography variant="caption" color="text.secondary">Due: {new Date(project.dueDate).toLocaleString()}</Typography>}
+                              </Box>
+                              <Box sx={{ textAlign: 'right' }}>
+                                {isGraded ? (
+                                  <>
+                                    <Typography variant="subtitle1" sx={{ fontWeight: 700, color: 'success.main' }}>{sub.score} / {project.maxPoints || 100}</Typography>
+                                    {sub.feedback && <Typography variant="caption" color="text.secondary" sx={{ display: 'block' }}>{sub.feedback}</Typography>}
+                                  </>
+                                ) : sub ? (
+                                  <Chip size="small" label="Awaiting grade" color="warning" variant="outlined" />
+                                ) : (
+                                  <Chip size="small" label="Not submitted" variant="outlined" />
+                                )}
+                              </Box>
+                            </Box>
+                          </Paper>
+                        );
+                      })}
+                    </Stack>
+                  </CardContent>
+                </Card>
+              )}
             </Box>
           )}
         </Box>

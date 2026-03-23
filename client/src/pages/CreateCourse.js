@@ -14,6 +14,7 @@ import {
 } from '@mui/material';
 import { useNavigate } from 'react-router-dom';
 import api from '../services/api';
+import { COURSE_CATEGORIES } from '../utils/courseCategories';
 
 const CreateCourse = () => {
   const [formData, setFormData] = useState({
@@ -56,8 +57,14 @@ const CreateCourse = () => {
 
     try {
       const response = await api.post('/courses', formData);
-      setSuccess('Course created successfully!');
-      setTimeout(() => navigate(`/course/${response.data._id}`), 750);
+      const userData = JSON.parse(localStorage.getItem('user') || '{}');
+      const isFaculty = userData.role === 'faculty';
+      if (isFaculty) {
+        setSuccess('Course submitted for admin approval. You can start adding content while it awaits review.');
+      } else {
+        setSuccess('Course created and published to the catalog.');
+      }
+      setTimeout(() => navigate(`/course/${response.data._id}`), 1500);
     } catch (err) {
       console.error('Create course error', err);
       setError(err.response?.data?.message || 'Could not create course');
@@ -98,16 +105,21 @@ const CreateCourse = () => {
             value={formData.description}
             onChange={handleChange}
           />
-          <TextField
-            margin="normal"
-            required
-            fullWidth
-            id="category"
-            label="Category"
-            name="category"
-            value={formData.category}
-            onChange={handleChange}
-          />
+          <FormControl fullWidth margin="normal" required>
+            <InputLabel id="category-label">Category</InputLabel>
+            <Select
+              labelId="category-label"
+              id="category"
+              name="category"
+              value={formData.category}
+              label="Category"
+              onChange={handleChange}
+            >
+              {COURSE_CATEGORIES.map((category) => (
+                <MenuItem key={category} value={category}>{category}</MenuItem>
+              ))}
+            </Select>
+          </FormControl>
           <FormControl fullWidth margin="normal">
             <InputLabel id="level-label">Level</InputLabel>
             <Select

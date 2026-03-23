@@ -1,5 +1,14 @@
 /* eslint-disable no-console */
+const dns = require('dns');
+const mongoose = require('mongoose');
+const Course = require('../models/Course');
+const User = require('../models/User');
+
+dns.setServers(['8.8.8.8', '8.8.4.4']);
+
 const BASE_URL = process.env.E2E_API_BASE_URL || 'http://localhost:5001/api';
+const CLEANUP_AFTER_RUN = String(process.env.E2E_CLEANUP || 'true').toLowerCase() !== 'false';
+const DB_URI = process.env.MONGODB_URI || 'mongodb://localhost:27017/elearning';
 
 async function request(path, options = {}) {
   const response = await fetch(`${BASE_URL}${path}`, {
@@ -60,208 +69,249 @@ function assert(condition, message) {
   }
 }
 
+async function cleanupCreatedData({ courseId, adminEmail, facultyEmail, learnerEmail }) {
+  if (!courseId && !adminEmail && !facultyEmail && !learnerEmail) return;
+
+  try {
+    if (mongoose.connection.readyState !== 1) {
+      await mongoose.connect(DB_URI);
+    }
+
+    if (courseId) {
+      await Course.deleteOne({ _id: courseId });
+    }
+
+    if (adminEmail || facultyEmail || learnerEmail) {
+      const emails = [adminEmail, facultyEmail, learnerEmail].filter(Boolean);
+      await User.deleteMany({ email: { $in: emails } });
+    }
+  } finally {
+    if (mongoose.connection.readyState === 1) {
+      await mongoose.disconnect();
+    }
+  }
+}
+
 async function main() {
   const stamp = Date.now();
+  const adminEmail = `admin.e2e.${stamp}@example.com`;
   const facultyEmail = `faculty.e2e.${stamp}@example.com`;
   const learnerEmail = `learner.e2e.${stamp}@example.com`;
   const password = 'E2eFlow@123';
+  let courseId = null;
 
   console.log(`Using API base: ${BASE_URL}`);
 
-  const facultyAuth = await registerOrLogin({
-    name: 'E2E Faculty',
-    email: facultyEmail,
-    password,
-    role: 'faculty'
-  });
+  try {
+    const facultyAuth = await registerOrLogin({
+      name: 'E2E Faculty',
+      email: facultyEmail,
+      password,
+      role: 'faculty'
+    });
 
-  const learnerAuth = await registerOrLogin({
-    name: 'E2E Learner',
-    email: learnerEmail,
-    password,
-    role: 'learner'
-  });
+    const adminAuth = await registerOrLogin({
+      name: 'E2E Admin',
+      email: adminEmail,
+      password,
+      role: 'admin'
+    });
 
-  console.log('Created/logged in faculty and learner users.');
+    const learnerAuth = await registerOrLogin({
+      name: 'E2E Learner',
+      email: learnerEmail,
+      password,
+      role: 'learner'
+    });
 
-  const course = await request('/courses', {
-    method: 'POST',
-    token: facultyAuth.token,
-    body: {
-      title: `E2E Assessment Course ${stamp}`,
-      description: 'End-to-end validation for assignments, tests, projects, grading, and progress.',
-      category: 'Web Development',
-      level: 'beginner',
-      duration: 4,
-      price: 0,
-      isPublished: true
+    console.log('Created/logged in faculty and learner users.');
+
+    const course = await request('/courses', {
+      method: 'POST',
+      token: facultyAuth.token,
+      body: {
+        title: `E2E Assessment Course ${stamp}`,
+        description: 'End-to-end validation for assignments, tests, projects, grading, and progress.',
+        category: 'Web Development',
+        level: 'beginner',
+        duration: 4,
+        price: 0,
+        isPublished: true
+      }
+    });
+
+    courseId = course._id;
+    console.log(`Created course: ${courseId}`);
+
+    await request(`/courses/${courseId}/lectures`, {
+      method: 'POST',
+      token: facultyAuth.token,
+      body: {
+        title: 'Lecture 1',
+        description: 'Intro lecture for progress tracking',
+        videoUrl: 'https://example.com/video',
+        duration: 10
+      }
+    });
+
+    let updatedCourse = await request(`/courses/${courseId}/assignments`, {
+      method: 'POST',
+      token: facultyAuth.token,
+      body: {
+        title: 'Assignment 1',
+        description: 'Write a short answer',
+        instructions: 'Submit text answer',
+        submissionType: 'text',
+        maxPoints: 100
+      }
+    });
+
+    const assignmentId = updatedCourse.assignments[updatedCourse.assignments.length - 1]._id;
+
+    updatedCourse = await request(`/courses/${courseId}/tests`, {
+      method: 'POST',
+      token: facultyAuth.token,
+      body: {
+        title: 'MCQ Test 1',
+        description: 'One question test',
+        autoGrade: true,
+        questions: [
+          {
+            question: '2 + 2 = ?',
+            options: ['3', '4', '5'],
+            correctAnswer: '4',
+            points: 10
+          }
+        ]
+      }
+    });
+
+    const testId = updatedCourse.tests[updatedCourse.tests.length - 1]._id;
+
+    updatedCourse = await request(`/courses/${courseId}/projects`, {
+      method: 'POST',
+      token: facultyAuth.token,
+      body: {
+        title: 'Project 1',
+        description: 'Submit a project URL',
+        requirements: 'Any valid URL',
+        submissionType: 'url',
+        maxPoints: 100
+      }
+    });
+
+    const projectId = updatedCourse.projects[updatedCourse.projects.length - 1]._id;
+
+    await request(`/courses/${courseId}/enroll`, {
+      method: 'POST',
+      token: learnerAuth.token
+    });
+
+    await request(`/courses/${courseId}/approve/${learnerAuth.user.id}`, {
+      method: 'PUT',
+      token: adminAuth.token
+    });
+
+    await request(`/courses/${courseId}/progress`, {
+      method: 'PUT',
+      token: learnerAuth.token,
+      body: {
+        completed: true,
+        lectureId: updatedCourse.lectures[0]._id
+      }
+    });
+
+    await request(`/courses/${courseId}/assignments/${assignmentId}/submit`, {
+      method: 'POST',
+      token: learnerAuth.token,
+      body: {
+        textAnswer: 'My assignment submission'
+      }
+    });
+
+    await request(`/courses/${courseId}/tests/${testId}/submit`, {
+      method: 'POST',
+      token: learnerAuth.token,
+      body: {
+        answers: ['4']
+      }
+    });
+
+    await request(`/courses/${courseId}/projects/${projectId}/submit`, {
+      method: 'POST',
+      token: learnerAuth.token,
+      body: {
+        submissionUrl: 'https://example.com/project'
+      }
+    });
+
+    await request(`/courses/${courseId}/assignments/${assignmentId}/grade/${learnerAuth.user.id}`, {
+      method: 'PUT',
+      token: facultyAuth.token,
+      body: {
+        score: 90,
+        feedback: 'Nice work'
+      }
+    });
+
+    await request(`/courses/${courseId}/projects/${projectId}/grade/${learnerAuth.user.id}`, {
+      method: 'PUT',
+      token: facultyAuth.token,
+      body: {
+        score: 80,
+        feedback: 'Solid project'
+      }
+    });
+
+    const finalCourse = await request(`/courses/${courseId}`, {
+      method: 'GET',
+      token: facultyAuth.token
+    });
+
+    const assignmentSubmission = finalCourse.assignments
+      .find((a) => a._id === assignmentId)
+      .submissions.find((s) => (s.student?._id || s.student) === learnerAuth.user.id);
+
+    const testSubmission = finalCourse.tests
+      .find((t) => t._id === testId)
+      .submissions.find((s) => (s.student?._id || s.student) === learnerAuth.user.id);
+
+    const projectSubmission = finalCourse.projects
+      .find((p) => p._id === projectId)
+      .submissions.find((s) => (s.student?._id || s.student) === learnerAuth.user.id);
+
+    const overallGrade = finalCourse.grades.find((g) => (g.student?._id || g.student) === learnerAuth.user.id);
+
+    assert(assignmentSubmission?.status === 'graded', 'assignment should be graded');
+    assert(testSubmission?.score === 10, 'test should auto-grade to full score (10)');
+    assert(projectSubmission?.status === 'graded', 'project should be graded');
+    assert(overallGrade?.numericGrade !== null && overallGrade?.numericGrade !== undefined, 'overall numeric grade should exist');
+
+    const learnerProfile = await request('/auth/profile', {
+      method: 'GET',
+      token: learnerAuth.token
+    });
+
+    const learnerEnrollment = (learnerProfile.enrolledCourses || []).find(
+      (en) => (en.course?._id || en.course) === courseId
+    );
+
+    console.log('--- E2E Assessment Flow Summary ---');
+    console.log(`Course: ${courseId}`);
+    console.log(`Assignment status/score: ${assignmentSubmission.status}/${assignmentSubmission.score}`);
+    console.log(`Test score: ${testSubmission.score}/${testSubmission.maxScore}`);
+    console.log(`Project status/score: ${projectSubmission.status}/${projectSubmission.score}`);
+    console.log(`Overall grade: ${overallGrade.grade} (numeric: ${overallGrade.numericGrade})`);
+    console.log(`Learner progress: ${learnerEnrollment?.progress ?? 'N/A'}%`);
+    console.log('E2E flow completed successfully.');
+  } finally {
+    if (CLEANUP_AFTER_RUN) {
+      await cleanupCreatedData({ courseId, adminEmail, facultyEmail, learnerEmail });
+      console.log('Cleanup complete: removed E2E course and users.');
+    } else {
+      console.log('Cleanup skipped because E2E_CLEANUP=false.');
     }
-  });
-
-  const courseId = course._id;
-  console.log(`Created course: ${courseId}`);
-
-  await request(`/courses/${courseId}/lectures`, {
-    method: 'POST',
-    token: facultyAuth.token,
-    body: {
-      title: 'Lecture 1',
-      description: 'Intro lecture for progress tracking',
-      videoUrl: 'https://example.com/video',
-      duration: 10
-    }
-  });
-
-  let updatedCourse = await request(`/courses/${courseId}/assignments`, {
-    method: 'POST',
-    token: facultyAuth.token,
-    body: {
-      title: 'Assignment 1',
-      description: 'Write a short answer',
-      instructions: 'Submit text answer',
-      submissionType: 'text',
-      maxPoints: 100
-    }
-  });
-
-  const assignmentId = updatedCourse.assignments[updatedCourse.assignments.length - 1]._id;
-
-  updatedCourse = await request(`/courses/${courseId}/tests`, {
-    method: 'POST',
-    token: facultyAuth.token,
-    body: {
-      title: 'MCQ Test 1',
-      description: 'One question test',
-      autoGrade: true,
-      questions: [
-        {
-          question: '2 + 2 = ?',
-          options: ['3', '4', '5'],
-          correctAnswer: '4',
-          points: 10
-        }
-      ]
-    }
-  });
-
-  const testId = updatedCourse.tests[updatedCourse.tests.length - 1]._id;
-
-  updatedCourse = await request(`/courses/${courseId}/projects`, {
-    method: 'POST',
-    token: facultyAuth.token,
-    body: {
-      title: 'Project 1',
-      description: 'Submit a project URL',
-      requirements: 'Any valid URL',
-      submissionType: 'url',
-      maxPoints: 100
-    }
-  });
-
-  const projectId = updatedCourse.projects[updatedCourse.projects.length - 1]._id;
-
-  await request(`/courses/${courseId}/enroll`, {
-    method: 'POST',
-    token: learnerAuth.token
-  });
-
-  await request(`/courses/${courseId}/approve/${learnerAuth.user.id}`, {
-    method: 'PUT',
-    token: facultyAuth.token
-  });
-
-  await request(`/courses/${courseId}/progress`, {
-    method: 'PUT',
-    token: learnerAuth.token,
-    body: {
-      completed: true,
-      lectureId: updatedCourse.lectures[0]._id
-    }
-  });
-
-  await request(`/courses/${courseId}/assignments/${assignmentId}/submit`, {
-    method: 'POST',
-    token: learnerAuth.token,
-    body: {
-      textAnswer: 'My assignment submission'
-    }
-  });
-
-  await request(`/courses/${courseId}/tests/${testId}/submit`, {
-    method: 'POST',
-    token: learnerAuth.token,
-    body: {
-      answers: ['4']
-    }
-  });
-
-  await request(`/courses/${courseId}/projects/${projectId}/submit`, {
-    method: 'POST',
-    token: learnerAuth.token,
-    body: {
-      submissionUrl: 'https://example.com/project'
-    }
-  });
-
-  await request(`/courses/${courseId}/assignments/${assignmentId}/grade/${learnerAuth.user.id}`, {
-    method: 'PUT',
-    token: facultyAuth.token,
-    body: {
-      score: 90,
-      feedback: 'Nice work'
-    }
-  });
-
-  await request(`/courses/${courseId}/projects/${projectId}/grade/${learnerAuth.user.id}`, {
-    method: 'PUT',
-    token: facultyAuth.token,
-    body: {
-      score: 80,
-      feedback: 'Solid project'
-    }
-  });
-
-  const finalCourse = await request(`/courses/${courseId}`, {
-    method: 'GET',
-    token: facultyAuth.token
-  });
-
-  const assignmentSubmission = finalCourse.assignments
-    .find((a) => a._id === assignmentId)
-    .submissions.find((s) => (s.student?._id || s.student) === learnerAuth.user.id);
-
-  const testSubmission = finalCourse.tests
-    .find((t) => t._id === testId)
-    .submissions.find((s) => (s.student?._id || s.student) === learnerAuth.user.id);
-
-  const projectSubmission = finalCourse.projects
-    .find((p) => p._id === projectId)
-    .submissions.find((s) => (s.student?._id || s.student) === learnerAuth.user.id);
-
-  const overallGrade = finalCourse.grades.find((g) => (g.student?._id || g.student) === learnerAuth.user.id);
-
-  assert(assignmentSubmission?.status === 'graded', 'assignment should be graded');
-  assert(testSubmission?.score === 10, 'test should auto-grade to full score (10)');
-  assert(projectSubmission?.status === 'graded', 'project should be graded');
-  assert(overallGrade?.numericGrade !== null && overallGrade?.numericGrade !== undefined, 'overall numeric grade should exist');
-
-  const learnerProfile = await request('/auth/profile', {
-    method: 'GET',
-    token: learnerAuth.token
-  });
-
-  const learnerEnrollment = (learnerProfile.enrolledCourses || []).find(
-    (en) => (en.course?._id || en.course) === courseId
-  );
-
-  console.log('--- E2E Assessment Flow Summary ---');
-  console.log(`Course: ${courseId}`);
-  console.log(`Assignment status/score: ${assignmentSubmission.status}/${assignmentSubmission.score}`);
-  console.log(`Test score: ${testSubmission.score}/${testSubmission.maxScore}`);
-  console.log(`Project status/score: ${projectSubmission.status}/${projectSubmission.score}`);
-  console.log(`Overall grade: ${overallGrade.grade} (numeric: ${overallGrade.numericGrade})`);
-  console.log(`Learner progress: ${learnerEnrollment?.progress ?? 'N/A'}%`);
-  console.log('E2E flow completed successfully.');
+  }
 }
 
 main().catch((error) => {

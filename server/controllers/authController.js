@@ -95,7 +95,7 @@ const getProfile = async (req, res) => {
       })
       .populate({
         path: 'createdCourses',
-        select: 'title category level'
+        select: 'title category level catalogStatus rejectionReason'
       });
 
     res.json(user);

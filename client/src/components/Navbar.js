@@ -12,9 +12,7 @@ import {
   Divider,
   IconButton,
   Stack,
-  Switch,
-  ListItemText,
-  ListItemSecondaryAction
+  Switch
 } from '@mui/material';
 import { Link, useNavigate } from 'react-router-dom';
 import { io } from 'socket.io-client';
@@ -227,6 +225,11 @@ const Navbar = () => {
               <Button color="inherit" component={Link} to="/dashboard" sx={{ fontWeight: 700 }}>
                 Home
               </Button>
+              {user.role === 'admin' && (
+                <Button color="inherit" component={Link} to="/admin" sx={{ fontWeight: 700 }}>
+                  Admin
+                </Button>
+              )}
               <Button color="inherit" component={Link} to="/search" sx={{ fontWeight: 700 }}>
                 Catalog
               </Button>
@@ -238,11 +241,6 @@ const Navbar = () => {
                   <Typography component="span" sx={{ fontSize: 18 }}>🔔</Typography>
                 </Badge>
               </IconButton>
-              {user.role === 'admin' && (
-                <Button color="inherit" component={Link} to="/admin" sx={{ fontWeight: 700 }}>
-                  Admin
-                </Button>
-              )}
               {(user.role === 'admin' || user.role === 'faculty') && (
                 <Button color="inherit" component={Link} to="/create-course" sx={{ fontWeight: 700 }}>
                   New Course
@@ -288,33 +286,33 @@ const Navbar = () => {
         onClose={closeNotifications}
         PaperProps={{ sx: { width: 360, maxWidth: '92vw' } }}
       >
-        <MenuItem disabled>
-          <ListItemText
-            primary="Notifications"
-            secondary={unreadCount ? `${unreadCount} unread` : 'All caught up'}
+        <Box sx={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', px: 2, py: 1 }}>
+          <Box>
+            <Typography variant="subtitle2" sx={{ fontWeight: 700 }}>Notifications</Typography>
+            <Typography variant="caption" color="text.secondary">
+              {unreadCount ? `${unreadCount} unread` : 'All caught up'}
+            </Typography>
+          </Box>
+          <Button size="small" onClick={markAllNotificationsRead} disabled={!unreadCount}>
+            Mark all read
+          </Button>
+        </Box>
+        <Box sx={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', px: 2, py: 0.5 }}>
+          <Typography variant="body2">Unread only</Typography>
+          <Switch
+            size="small"
+            checked={unreadOnly}
+            onChange={(event) => setUnreadOnly(event.target.checked)}
           />
-          <ListItemSecondaryAction>
-            <Button size="small" onClick={markAllNotificationsRead} disabled={!unreadCount}>
-              Mark all read
-            </Button>
-          </ListItemSecondaryAction>
-        </MenuItem>
-        <MenuItem disabled sx={{ minHeight: 36 }}>
-          <ListItemText primary="Unread only" />
-          <ListItemSecondaryAction>
-            <Switch
-              size="small"
-              checked={unreadOnly}
-              onChange={(event) => setUnreadOnly(event.target.checked)}
-            />
-          </ListItemSecondaryAction>
-        </MenuItem>
+        </Box>
         <Divider />
 
         {!displayedNotifications.length && (
-          <MenuItem disabled>
-            <ListItemText primary={unreadOnly ? 'No unread notifications' : 'No notifications yet'} />
-          </MenuItem>
+          <Box sx={{ px: 2, py: 1.5 }}>
+            <Typography variant="body2" color="text.secondary">
+              {unreadOnly ? 'No unread notifications' : 'No notifications yet'}
+            </Typography>
+          </Box>
         )}
 
         {displayedNotifications.map((notification) => {
@@ -330,38 +328,43 @@ const Navbar = () => {
               backgroundColor: notification.read ? 'transparent' : 'rgba(25, 118, 210, 0.08)'
             }}
           >
-            <ListItemText
-              primary={`${typeMeta.icon} ${notification.title}`}
-              secondary={`${notification.body} • ${new Date(notification.createdAt).toLocaleString()}`}
-              primaryTypographyProps={{ fontWeight: notification.read ? 500 : 700 }}
-            />
-            <Stack direction="row" spacing={0.8} alignItems="center" sx={{ ml: 1 }}>
-              <Chip
-                size="small"
-                label={typeMeta.label}
-                color={notification.priority === 'urgent' ? 'error' : 'default'}
-                variant={notification.read ? 'outlined' : 'filled'}
-              />
-              {notification.type === 'chat_message' && notification.chatId ? (
-                <Button
+            <Box sx={{ width: '100%', minWidth: 0 }}>
+              <Typography variant="body2" sx={{ fontWeight: notification.read ? 400 : 700, wordBreak: 'break-word', whiteSpace: 'normal' }}>
+                {typeMeta.icon} {notification.title}
+              </Typography>
+              <Typography variant="caption" color="text.secondary" sx={{ display: 'block', wordBreak: 'break-word', whiteSpace: 'normal', mt: 0.3 }}>
+                {notification.body}
+              </Typography>
+              <Typography variant="caption" color="text.disabled" sx={{ display: 'block', mt: 0.2 }}>
+                {new Date(notification.createdAt).toLocaleString()}
+              </Typography>
+              <Stack direction="row" spacing={0.8} alignItems="center" sx={{ mt: 0.6 }}>
+                <Chip
                   size="small"
-                  variant="outlined"
-                  onClick={(event) => handleNotificationReply(event, notification)}
-                >
-                  Reply
-                </Button>
-              ) : null}
-            </Stack>
+                  label={typeMeta.label}
+                  color={notification.priority === 'urgent' ? 'error' : 'default'}
+                  variant={notification.read ? 'outlined' : 'filled'}
+                />
+                {notification.type === 'chat_message' && notification.chatId ? (
+                  <Button
+                    size="small"
+                    variant="outlined"
+                    onClick={(event) => handleNotificationReply(event, notification)}
+                  >
+                    Reply
+                  </Button>
+                ) : null}
+              </Stack>
+            </Box>
           </MenuItem>
           );
         })}
 
         {notificationHasMore && (
           <MenuItem onClick={loadMoreNotifications} disabled={notificationLoadingMore}>
-            <ListItemText
-              primary={notificationLoadingMore ? 'Loading more...' : 'Load more notifications'}
-              primaryTypographyProps={{ align: 'center' }}
-            />
+            <Typography variant="body2" align="center" sx={{ width: '100%' }}>
+              {notificationLoadingMore ? 'Loading more...' : 'Load more notifications'}
+            </Typography>
           </MenuItem>
         )}
       </Menu>

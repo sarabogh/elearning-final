@@ -24,11 +24,18 @@ const {
   deleteProject,
   submitAssignment,
   gradeAssignmentSubmission,
+  reopenAssignmentSubmission,
   submitProject,
   gradeProjectSubmission,
+  reopenProjectSubmission,
   submitTest,
+  gradeTestSubmission,
+  reopenTestSubmission,
   addMaterial,
-  submitRating
+  submitRating,
+  getPendingCourses,
+  approveCourse,
+  rejectCourse
 } = require('../controllers/courseController');
 const { auth, authorize } = require('../middleware/auth');
 
@@ -60,7 +67,7 @@ router.get('/search/query', async (req, res) => {
     }
 
     const courses = await require('../models/Course').find(filter)
-      .populate('instructor', 'name email')
+      .populate('instructor', 'name email role profile.avatar profile.title profile.degree profile.bio')
       .sort({ createdAt: -1 });
 
     res.json(courses);
@@ -70,6 +77,7 @@ router.get('/search/query', async (req, res) => {
 });
 
 router.get('/', getAllCourses);
+router.get('/catalog/pending', auth, authorize('admin'), getPendingCourses);
 router.get('/:id', getCourseById);
 router.post('/', auth, authorize('admin', 'faculty'), createCourse);
 router.put('/:id', auth, updateCourse);
@@ -92,11 +100,17 @@ router.put('/:id/projects/:projectId', auth, authorize('admin', 'faculty'), upda
 router.delete('/:id/projects/:projectId', auth, authorize('admin', 'faculty'), deleteProject);
 router.post('/:id/assignments/:assignmentId/submit', auth, authorize('learner'), submitAssignment);
 router.put('/:id/assignments/:assignmentId/grade/:studentId', auth, authorize('admin', 'faculty'), gradeAssignmentSubmission);
+router.delete('/:id/assignments/:assignmentId/submissions/:studentId', auth, authorize('admin', 'faculty'), reopenAssignmentSubmission);
 router.post('/:id/tests/:testId/submit', auth, authorize('learner'), submitTest);
+router.put('/:id/tests/:testId/grade/:studentId', auth, authorize('admin', 'faculty'), gradeTestSubmission);
+router.delete('/:id/tests/:testId/submissions/:studentId', auth, authorize('admin', 'faculty'), reopenTestSubmission);
 router.post('/:id/projects/:projectId/submit', auth, authorize('learner'), submitProject);
 router.put('/:id/projects/:projectId/grade/:studentId', auth, authorize('admin', 'faculty'), gradeProjectSubmission);
+router.delete('/:id/projects/:projectId/submissions/:studentId', auth, authorize('admin', 'faculty'), reopenProjectSubmission);
 router.post('/:id/materials', auth, authorize('admin', 'faculty'), addMaterial);
 router.post('/:id/rate', auth, authorize('learner'), submitRating);
 router.put('/:id/grade/:studentId', auth, authorize('admin', 'faculty'), gradeStudent);
+router.put('/:id/catalog/approve', auth, authorize('admin'), approveCourse);
+router.put('/:id/catalog/reject', auth, authorize('admin'), rejectCourse);
 
 module.exports = router;

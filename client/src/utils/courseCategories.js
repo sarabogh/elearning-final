@@ -1,0 +1,22 @@
+export const COURSE_CATEGORIES = [
+  'Arts & Design',
+  'Business & Entrepreneurship',
+  'Communication & Media',
+  'Computer Science & Programming',
+  'Data Science & Analytics',
+  'Engineering & Robotics',
+  'Health & Wellness',
+  'Humanities & Philosophy',
+  'Languages & Linguistics',
+  'Law, Government & Public Policy',
+  'Lifestyle & Personal Development',
+  'Marketing & Sales',
+  'Mathematics',
+  'Music & Performing Arts',
+  'Science',
+  'Social Sciences',
+  'Teaching & Education',
+  'Trades & Vocational Skills',
+  'Writing & Publishing',
+  'Other / Interdisciplinary'
+];

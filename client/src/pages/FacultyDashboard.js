@@ -14,7 +14,9 @@ import {
   TableHead,
   TableRow,
   Paper,
-  Chip
+  Chip,
+  Alert,
+  Stack
 } from '@mui/material';
 import { useNavigate } from 'react-router-dom';
 import api from '../services/api';
@@ -61,27 +63,6 @@ const FacultyDashboard = () => {
       setEnrollmentRequests(requests);
     } catch (error) {
       console.error('Error fetching enrollment requests:', error);
-    }
-  };
-
-  const handleApproveEnrollment = async (courseId, studentId) => {
-    try {
-      await api.put(`/courses/${courseId}/approve/${studentId}`);
-      alert('Enrollment approved!');
-      fetchEnrollmentRequests();
-    } catch (error) {
-      alert('Failed to approve enrollment: ' + error.response?.data?.message);
-    }
-  };
-
-  const handleRejectEnrollment = async (courseId, studentId) => {
-    try {
-      // Note: You might need to add a reject endpoint
-      await api.put(`/courses/${courseId}/reject/${studentId}`);
-      alert('Enrollment rejected!');
-      fetchEnrollmentRequests();
-    } catch (error) {
-      alert('Failed to reject enrollment: ' + error.response?.data?.message);
     }
   };
 
@@ -154,9 +135,14 @@ const FacultyDashboard = () => {
         <Grid item xs={12}>
           <Card>
             <CardContent>
-              <Typography variant="h6" gutterBottom>
-                Enrollment Requests
-              </Typography>
+              <Stack spacing={1.5} sx={{ mb: 2 }}>
+                <Typography variant="h6">
+                  Enrollment Requests
+                </Typography>
+                <Alert severity="info">
+                  Student enrollment requests are pending admin approval. Faculty can view request volume here, but only admins can approve access to classes.
+                </Alert>
+              </Stack>
               <TableContainer component={Paper}>
                 <Table>
                   <TableHead>
@@ -164,7 +150,7 @@ const FacultyDashboard = () => {
                       <TableCell>Course</TableCell>
                       <TableCell>Student</TableCell>
                       <TableCell>Requested At</TableCell>
-                      <TableCell>Actions</TableCell>
+                      <TableCell>Status</TableCell>
                     </TableRow>
                   </TableHead>
                   <TableBody>
@@ -174,23 +160,19 @@ const FacultyDashboard = () => {
                         <TableCell>{request.student.name} ({request.student.email})</TableCell>
                         <TableCell>{new Date(request.enrolledAt).toLocaleDateString()}</TableCell>
                         <TableCell>
-                          <Button
-                            size="small"
-                            color="success"
-                            onClick={() => handleApproveEnrollment(request.courseId, request.student._id)}
-                          >
-                            Approve
-                          </Button>
-                          <Button
-                            size="small"
-                            color="error"
-                            onClick={() => handleRejectEnrollment(request.courseId, request.student._id)}
-                          >
-                            Reject
-                          </Button>
+                          <Chip size="small" color="warning" label="Pending Admin Approval" />
                         </TableCell>
                       </TableRow>
                     ))}
+                    {enrollmentRequests.length === 0 && (
+                      <TableRow>
+                        <TableCell colSpan={4}>
+                          <Typography variant="body2" color="text.secondary">
+                            No pending enrollment requests for your classes right now.
+                          </Typography>
+                        </TableCell>
+                      </TableRow>
+                    )}
                   </TableBody>
                 </Table>
               </TableContainer>

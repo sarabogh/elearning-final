@@ -47,9 +47,16 @@ app.use(express.urlencoded({ extended: true }));
 app.use('/uploads', express.static(path.join(__dirname, process.env.UPLOAD_PATH || 'uploads')));
 
 // MongoDB connection
-mongoose.connect(process.env.MONGODB_URI || 'mongodb://localhost:27017/elearning')
-.then(() => console.log('MongoDB connected'))
-.catch(err => console.log(err));
+const isTestEnv = process.env.NODE_ENV === 'test';
+const mongoUri = isTestEnv
+  ? (process.env.MONGODB_TEST_URI || 'mongodb://localhost:27017/elearn-test')
+  : (process.env.MONGODB_URI || 'mongodb://localhost:27017/elearning');
+
+if (mongoose.connection.readyState === 0) {
+  mongoose.connect(mongoUri)
+    .then(() => console.log('MongoDB connected'))
+    .catch(err => console.log(err));
+}
 
 app.set('io', io);
 
@@ -106,14 +113,18 @@ app.get('/', (req, res) => {
 
 // Start server
 const PORT = process.env.PORT || 5001;
-server.listen(PORT, () => {
-  console.log(`Server running on port ${PORT}`);
-});
+if (!isTestEnv) {
+  server.listen(PORT, () => {
+    console.log(`Server running on port ${PORT}`);
+  });
 
-server.on('error', (err) => {
-  if (err.code === 'EADDRINUSE') {
-    console.error(`Port ${PORT} is already in use. Make sure no other server is running on this port.`);
-  } else {
-    console.error('Server error:', err);
-  }
-});
+  server.on('error', (err) => {
+    if (err.code === 'EADDRINUSE') {
+      console.error(`Port ${PORT} is already in use. Make sure no other server is running on this port.`);
+    } else {
+      console.error('Server error:', err);
+    }
+  });
+}
+
+module.exports = app;

@@ -18,6 +18,7 @@ import {
 } from '@mui/material';
 import { useNavigate, useParams } from 'react-router-dom';
 import api from '../services/api';
+import { COURSE_CATEGORIES } from '../utils/courseCategories';
 
 const EditCourse = () => {
   const { id } = useParams();
@@ -127,16 +128,21 @@ const EditCourse = () => {
             value={formData.description}
             onChange={handleChange}
           />
-          <TextField
-            margin="normal"
-            required
-            fullWidth
-            id="category"
-            label="Category"
-            name="category"
-            value={formData.category}
-            onChange={handleChange}
-          />
+          <FormControl fullWidth margin="normal" required>
+            <InputLabel id="category-label">Category</InputLabel>
+            <Select
+              labelId="category-label"
+              id="category"
+              name="category"
+              value={formData.category}
+              label="Category"
+              onChange={handleChange}
+            >
+              {COURSE_CATEGORIES.map((category) => (
+                <MenuItem key={category} value={category}>{category}</MenuItem>
+              ))}
+            </Select>
+          </FormControl>
           <FormControl fullWidth margin="normal">
             <InputLabel id="level-label">Level</InputLabel>
             <Select

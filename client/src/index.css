@@ -69,6 +69,7 @@ a {
   background: rgba(255, 255, 255, 0.14);
   right: -60px;
   top: -70px;
+  pointer-events: none;
 }
 
 .stat-grid {

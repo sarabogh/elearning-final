@@ -150,7 +150,7 @@ const dueDateChanged = (previousDate, nextDate) => {
 const getAllCourses = async (req, res) => {
   try {
     const courses = await Course.find({ isPublished: true })
-      .populate('instructor', 'name email')
+      .populate('instructor', 'name email role profile.avatar profile.title profile.degree profile.bio')
       .populate('enrolledStudents.student', 'name email')
       .populate('ratings.student', 'name')
       .sort({ createdAt: -1 });
@@ -164,7 +164,7 @@ const getAllCourses = async (req, res) => {
 const getCourseById = async (req, res) => {
   try {
     const course = await Course.findById(req.params.id)
-      .populate('instructor', 'name email')
+      .populate('instructor', 'name email role profile.avatar profile.title profile.degree profile.bio')
       .populate('enrolledStudents.student', 'name email')
       .populate('ratings.student', 'name')
       .populate('grades.student', 'name')
@@ -184,10 +184,12 @@ const getCourseById = async (req, res) => {
 
 const createCourse = async (req, res) => {
   try {
+    const isAdmin = req.user.role === 'admin';
     const courseData = {
       ...req.body,
       instructor: req.user.id,
-      isPublished: req.body.isPublished ?? true
+      isPublished: isAdmin,
+      catalogStatus: isAdmin ? 'published' : 'pending'
     };
 
     const course = new Course(courseData);
@@ -282,7 +284,7 @@ const approveEnrollment = async (req, res) => {
       return res.status(404).json({ message: 'Course not found' });
     }
 
-    if (!isTeacherForCourse(course, req.user)) {
+    if (req.user.role !== 'admin') {
       return res.status(403).json({ message: 'Access denied' });
     }
 
@@ -907,17 +909,14 @@ const submitAssignment = async (req, res) => {
     );
 
     if (existingSubmission) {
-      existingSubmission.textAnswer = textAnswer || '';
-      existingSubmission.submissionUrl = submissionUrl || '';
-      existingSubmission.status = 'submitted';
-      existingSubmission.submittedAt = new Date();
-    } else {
-      assignment.submissions.push({
-        student: req.user.id,
-        textAnswer: textAnswer || '',
-        submissionUrl: submissionUrl || ''
-      });
+      return res.status(409).json({ message: 'You have already submitted this assignment. Ask your instructor to reopen it if you need to resubmit.' });
     }
+
+    assignment.submissions.push({
+      student: req.user.id,
+      textAnswer: textAnswer || '',
+      submissionUrl: submissionUrl || ''
+    });
 
     await recalculateLearnerMetrics(course, req.user.id);
     await course.save();
@@ -1007,17 +1006,14 @@ const submitProject = async (req, res) => {
     );
 
     if (existingSubmission) {
-      existingSubmission.textAnswer = textAnswer || '';
-      existingSubmission.submissionUrl = submissionUrl || '';
-      existingSubmission.status = 'submitted';
-      existingSubmission.submittedAt = new Date();
-    } else {
-      project.submissions.push({
-        student: req.user.id,
-        textAnswer: textAnswer || '',
-        submissionUrl: submissionUrl || ''
-      });
+      return res.status(409).json({ message: 'You have already submitted this project. Ask your instructor to reopen it if you need to resubmit.' });
     }
+
+    project.submissions.push({
+      student: req.user.id,
+      textAnswer: textAnswer || '',
+      submissionUrl: submissionUrl || ''
+    });
 
     await recalculateLearnerMetrics(course, req.user.id);
     await course.save();
@@ -1101,48 +1097,114 @@ const submitTest = async (req, res) => {
       return res.status(400).json({ message: 'Answers must be an array' });
     }
 
-    let score = 0;
     const maxScore = (test.questions || []).reduce((sum, q) => sum + (q.points || 0), 0);
+    const shouldAutoGrade = test.autoGrade !== false;
+    let score = 0;
 
-    (test.questions || []).forEach((question, index) => {
-      const submittedAnswer = answers[index];
-      const validOptions = question.options || [];
-      if (!validOptions.includes(submittedAnswer)) {
-        return;
-      }
-      if (submittedAnswer === question.correctAnswer) {
-        score += question.points || 0;
-      }
-    });
+    if (shouldAutoGrade) {
+      (test.questions || []).forEach((question, index) => {
+        const submittedAnswer = answers[index];
+        const validOptions = question.options || [];
+        if (!validOptions.includes(submittedAnswer)) {
+          return;
+        }
+        if (submittedAnswer === question.correctAnswer) {
+          score += question.points || 0;
+        }
+      });
+    }
 
     const existingSubmission = (test.submissions || []).find(
       (sub) => sub.student.toString() === req.user.id
     );
 
     if (existingSubmission) {
-      existingSubmission.answers = answers;
-      existingSubmission.score = score;
-      existingSubmission.maxScore = maxScore;
-      existingSubmission.autoGraded = true;
-      existingSubmission.submittedAt = new Date();
-      existingSubmission.gradedAt = new Date();
-    } else {
-      test.submissions.push({
-        student: req.user.id,
-        answers,
-        score,
-        maxScore,
-        autoGraded: true,
-        gradedAt: new Date()
-      });
+      return res.status(409).json({ message: 'You have already submitted this test. Ask your instructor to reopen it if you need to retake it.' });
     }
+
+    test.submissions.push({
+      student: req.user.id,
+      answers,
+      score: shouldAutoGrade ? score : null,
+      maxScore,
+      autoGraded: shouldAutoGrade,
+      feedback: '',
+      gradedAt: shouldAutoGrade ? new Date() : null
+    });
 
     await recalculateLearnerMetrics(course, req.user.id);
     await course.save();
 
-    res.json({ message: 'Test submitted and auto-graded', score, maxScore });
+    if (shouldAutoGrade) {
+      return res.json({ message: 'Test submitted and auto-graded', score, maxScore, autoGraded: true });
+    }
+
+    return res.json({ message: 'Test submitted for manual grading', score: null, maxScore, autoGraded: false });
   } catch (error) {
     res.status(500).json({ message: 'Server error' });
+  }
+};
+
+const gradeTestSubmission = async (req, res) => {
+  try {
+    const { score, feedback } = req.body;
+    const course = await Course.findById(req.params.id);
+
+    if (!course) {
+      return res.status(404).json({ message: 'Course not found' });
+    }
+
+    if (!isTeacherForCourse(course, req.user)) {
+      return res.status(403).json({ message: 'Access denied' });
+    }
+
+    const test = (course.tests || []).id(req.params.testId);
+    if (!test) {
+      return res.status(404).json({ message: 'Test not found' });
+    }
+
+    const submission = (test.submissions || []).find(
+      (sub) => sub.student.toString() === req.params.studentId
+    );
+
+    if (!submission) {
+      return res.status(404).json({ message: 'Submission not found' });
+    }
+
+    const maxScore = test.totalPoints || (test.questions || []).reduce((sum, q) => sum + (q.points || 0), 0) || 0;
+    const numericScore = Number(score);
+
+    if (Number.isNaN(numericScore)) {
+      return res.status(400).json({ message: 'Score must be a number' });
+    }
+
+    if (numericScore < 0 || numericScore > maxScore) {
+      return res.status(400).json({ message: `Score must be between 0 and ${maxScore}` });
+    }
+
+    submission.score = numericScore;
+    submission.maxScore = maxScore;
+    submission.feedback = feedback || '';
+    submission.autoGraded = false;
+    submission.gradedAt = new Date();
+
+    await recalculateLearnerMetrics(course, req.params.studentId);
+    await course.save();
+
+    await createNotification(req, {
+      user: req.params.studentId,
+      sender: req.user.id,
+      type: 'grade_posted',
+      title: `Test graded: ${test.title}`,
+      body: `Score: ${submission.score}/${maxScore}`,
+      priority: 'high',
+      courseId: course._id,
+      targetTab: 2
+    });
+
+    return res.json({ message: 'Test graded successfully' });
+  } catch (error) {
+    return res.status(500).json({ message: 'Server error' });
   }
 };
 
@@ -1194,6 +1256,118 @@ const submitRating = async (req, res) => {
   }
 };
 
+const reopenAssignmentSubmission = async (req, res) => {
+  try {
+    const course = await Course.findById(req.params.id);
+    if (!course) return res.status(404).json({ message: 'Course not found' });
+    if (!isTeacherForCourse(course, req.user)) return res.status(403).json({ message: 'Access denied' });
+
+    const assignment = (course.assignments || []).id(req.params.assignmentId);
+    if (!assignment) return res.status(404).json({ message: 'Assignment not found' });
+
+    const idx = (assignment.submissions || []).findIndex(
+      (sub) => sub.student.toString() === req.params.studentId
+    );
+    if (idx === -1) return res.status(404).json({ message: 'Submission not found' });
+
+    assignment.submissions.splice(idx, 1);
+    await recalculateLearnerMetrics(course, req.params.studentId);
+    await course.save();
+    res.json({ message: 'Assignment submission reopened' });
+  } catch (error) {
+    res.status(500).json({ message: 'Server error' });
+  }
+};
+
+const reopenProjectSubmission = async (req, res) => {
+  try {
+    const course = await Course.findById(req.params.id);
+    if (!course) return res.status(404).json({ message: 'Course not found' });
+    if (!isTeacherForCourse(course, req.user)) return res.status(403).json({ message: 'Access denied' });
+
+    const project = (course.projects || []).id(req.params.projectId);
+    if (!project) return res.status(404).json({ message: 'Project not found' });
+
+    const idx = (project.submissions || []).findIndex(
+      (sub) => sub.student.toString() === req.params.studentId
+    );
+    if (idx === -1) return res.status(404).json({ message: 'Submission not found' });
+
+    project.submissions.splice(idx, 1);
+    await recalculateLearnerMetrics(course, req.params.studentId);
+    await course.save();
+    res.json({ message: 'Project submission reopened' });
+  } catch (error) {
+    res.status(500).json({ message: 'Server error' });
+  }
+};
+
+const reopenTestSubmission = async (req, res) => {
+  try {
+    const course = await Course.findById(req.params.id);
+    if (!course) return res.status(404).json({ message: 'Course not found' });
+    if (!isTeacherForCourse(course, req.user)) return res.status(403).json({ message: 'Access denied' });
+
+    const test = (course.tests || []).id(req.params.testId);
+    if (!test) return res.status(404).json({ message: 'Test not found' });
+
+    const idx = (test.submissions || []).findIndex(
+      (sub) => sub.student.toString() === req.params.studentId
+    );
+    if (idx === -1) return res.status(404).json({ message: 'Submission not found' });
+
+    test.submissions.splice(idx, 1);
+    await recalculateLearnerMetrics(course, req.params.studentId);
+    await course.save();
+    res.json({ message: 'Test submission reopened' });
+  } catch (error) {
+    res.status(500).json({ message: 'Server error' });
+  }
+};
+
+const getPendingCourses = async (req, res) => {
+  try {
+    const courses = await Course.find({ catalogStatus: 'pending' })
+      .populate('instructor', 'name email')
+      .sort({ createdAt: -1 });
+    res.json(courses);
+  } catch (error) {
+    res.status(500).json({ message: 'Server error' });
+  }
+};
+
+const approveCourse = async (req, res) => {
+  try {
+    const course = await Course.findById(req.params.id);
+    if (!course) return res.status(404).json({ message: 'Course not found' });
+
+    course.isPublished = true;
+    course.catalogStatus = 'published';
+    course.rejectionReason = '';
+    await course.save();
+
+    res.json({ message: 'Course approved and published to catalog' });
+  } catch (error) {
+    res.status(500).json({ message: 'Server error' });
+  }
+};
+
+const rejectCourse = async (req, res) => {
+  try {
+    const course = await Course.findById(req.params.id);
+    if (!course) return res.status(404).json({ message: 'Course not found' });
+
+    course.isPublished = false;
+    course.catalogStatus = 'rejected';
+    course.rejectionReason = req.body.reason || '';
+    await course.save();
+
+    res.json({ message: 'Course rejected' });
+  } catch (error) {
+    res.status(500).json({ message: 'Server error' });
+  }
+};
+
 module.exports = {
   getAllCourses,
   getCourseById,
@@ -1219,9 +1393,16 @@ module.exports = {
   deleteProject,
   submitAssignment,
   gradeAssignmentSubmission,
+  reopenAssignmentSubmission,
   submitProject,
   gradeProjectSubmission,
+  reopenProjectSubmission,
   submitTest,
+  gradeTestSubmission,
+  reopenTestSubmission,
   getLessons,
-  submitRating
+  submitRating,
+  getPendingCourses,
+  approveCourse,
+  rejectCourse
 };
