@@ -249,6 +249,22 @@ const Dashboard = () => {
   if (!user) return <div>Loading...</div>;
 
   const isTeacher = user.role === 'faculty' || user.role === 'admin';
+  const isAdmin = user.role === 'admin';
+  const currentUserId = String(user._id || user.id || '');
+  const teacherOwnedCourses = isTeacher
+    ? (courses || []).filter((course) => String(course?.instructor?._id || course?.instructor || '') === currentUserId)
+    : [];
+  const teacherEnrollmentRequests = teacherOwnedCourses.flatMap((course) =>
+    (course.enrolledStudents || [])
+      .filter((entry) => entry.status === 'pending')
+      .map((entry) => ({
+        courseId: course._id,
+        courseTitle: course.title,
+        studentName: entry.student?.name || 'Student',
+        studentEmail: entry.student?.email || '',
+        enrolledAt: entry.enrolledAt
+      }))
+  );
 
   const enrolledCount = enrolledCourses.length;
   const teachingCount = createdCourses.length;
@@ -415,6 +431,20 @@ const Dashboard = () => {
                         <Typography variant="body2" color="textSecondary">
                           {course.category} • {course.level}
                         </Typography>
+                        {isAdmin && (() => {
+                          const liveCourse = teacherOwnedCourses.find((item) => String(item._id) === String(course._id));
+                          const approvedCount = (liveCourse?.enrolledStudents || []).filter((entry) => entry.status === 'approved').length;
+                          const pendingCount = (liveCourse?.enrolledStudents || []).filter((entry) => entry.status === 'pending').length;
+
+                          if (!liveCourse) return null;
+
+                          return (
+                            <Stack direction="row" spacing={0.8} sx={{ mt: 1, flexWrap: 'wrap' }}>
+                              <Chip label={`${approvedCount} approved`} size="small" color="success" variant="outlined" />
+                              <Chip label={`${pendingCount} pending`} size="small" color="warning" variant="outlined" />
+                            </Stack>
+                          );
+                        })()}
                         {course.catalogStatus === 'pending' && (
                           <Chip label="Pending Approval" color="warning" size="small" sx={{ mt: 0.75 }} />
                         )}
@@ -594,6 +624,40 @@ const Dashboard = () => {
               </Box>
             )}
           </Paper>
+
+          {isTeacher && (
+            <Paper sx={{ p: 2, mt: 2 }}>
+              <Typography variant="h6" sx={{ mb: 1 }}>
+                Enrollment Requests
+              </Typography>
+              {teacherEnrollmentRequests.length === 0 ? (
+                <Typography variant="body2" color="text.secondary">
+                  No students are waiting for approval in your classes right now.
+                </Typography>
+              ) : (
+                <Stack spacing={1}>
+                  {teacherEnrollmentRequests.map((request) => (
+                    <Paper
+                      key={`${request.courseId}-${request.studentEmail}-${request.enrolledAt}`}
+                      variant="outlined"
+                      sx={{ p: 1.2, borderStyle: 'dashed' }}
+                    >
+                      <Typography variant="body2" sx={{ fontWeight: 700 }}>
+                        {request.studentName}
+                      </Typography>
+                      <Typography variant="caption" color="text.secondary" sx={{ display: 'block' }}>
+                        {request.studentEmail || 'No email available'}
+                      </Typography>
+                      <Typography variant="caption" color="text.secondary" sx={{ display: 'block', mt: 0.3 }}>
+                        {request.courseTitle} • Requested {new Date(request.enrolledAt).toLocaleDateString()}
+                      </Typography>
+                      <Chip label="Pending Admin Approval" size="small" color="warning" sx={{ mt: 0.8 }} />
+                    </Paper>
+                  ))}
+                </Stack>
+              )}
+            </Paper>
+          )}
         </Grid>
       </Grid>
 

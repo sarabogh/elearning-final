@@ -200,50 +200,12 @@ const AdminDashboard = () => {
         </TableContainer>
       )}
 
-      {/* ── All Users ── */}
-      <Typography variant="h5" sx={{ mt: 4, mb: 2 }}>
-        All Users
-      </Typography>
-
-      <TableContainer component={Paper} sx={{ mb: 3 }}>
-        <Table>
-          <TableHead>
-            <TableRow>
-              <TableCell>Name</TableCell>
-              <TableCell>Email</TableCell>
-              <TableCell>Role</TableCell>
-              <TableCell>Enrolled Courses</TableCell>
-              <TableCell>Created Courses</TableCell>
-              <TableCell>Joined</TableCell>
-            </TableRow>
-          </TableHead>
-          <TableBody>
-            {users.map((user) => (
-              <TableRow key={user._id}>
-                <TableCell>{user.name}</TableCell>
-                <TableCell>{user.email}</TableCell>
-                <TableCell>
-                  <Chip
-                    label={user.role}
-                    color={user.role === 'admin' ? 'error' : user.role === 'faculty' ? 'primary' : 'default'}
-                    size="small"
-                  />
-                </TableCell>
-                <TableCell>{user.enrolledCourses?.length || 0}</TableCell>
-                <TableCell>{user.createdCourses?.length || 0}</TableCell>
-                <TableCell>{new Date(user.createdAt).toLocaleDateString()}</TableCell>
-              </TableRow>
-            ))}
-          </TableBody>
-        </Table>
-      </TableContainer>
-
       {/* ── Enrollment Requests ── */}
       <Typography variant="h5" sx={{ mt: 4, mb: 2 }}>
         Course Enrollment Requests
       </Typography>
 
-      <TableContainer component={Paper}>
+      <TableContainer component={Paper} sx={{ mb: 3 }}>
         <Table>
           <TableHead>
             <TableRow>
@@ -278,6 +240,44 @@ const AdminDashboard = () => {
                   </TableRow>
                 ))
             )}
+          </TableBody>
+        </Table>
+      </TableContainer>
+
+      {/* ── All Users ── */}
+      <Typography variant="h5" sx={{ mt: 4, mb: 2 }}>
+        All Users
+      </Typography>
+
+      <TableContainer component={Paper} sx={{ mb: 3 }}>
+        <Table>
+          <TableHead>
+            <TableRow>
+              <TableCell>Name</TableCell>
+              <TableCell>Email</TableCell>
+              <TableCell>Role</TableCell>
+              <TableCell>Enrolled Courses</TableCell>
+              <TableCell>Created Courses</TableCell>
+              <TableCell>Joined</TableCell>
+            </TableRow>
+          </TableHead>
+          <TableBody>
+            {users.map((user) => (
+              <TableRow key={user._id}>
+                <TableCell>{user.name}</TableCell>
+                <TableCell>{user.email}</TableCell>
+                <TableCell>
+                  <Chip
+                    label={user.role}
+                    color={user.role === 'admin' ? 'error' : user.role === 'faculty' ? 'primary' : 'default'}
+                    size="small"
+                  />
+                </TableCell>
+                <TableCell>{user.enrolledCourses?.length || 0}</TableCell>
+                <TableCell>{user.createdCourses?.length || 0}</TableCell>
+                <TableCell>{new Date(user.createdAt).toLocaleDateString()}</TableCell>
+              </TableRow>
+            ))}
           </TableBody>
         </Table>
       </TableContainer>
