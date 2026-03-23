@@ -1,0 +1,33 @@
+<!DOCTYPE html>
+<html lang="en">
+  <head>
+    <meta charset="utf-8" />
+    <title>eLearning Platform</title>
+    <script>
+      var pathSegmentsToKeep = 1;
+      var locationData = window.location;
+      var redirectPath = locationData.pathname
+        .split('/')
+        .slice(1)
+        .map(function (segment) {
+          return encodeURIComponent(segment);
+        })
+        .join('/');
+
+      var redirectUrl =
+        locationData.protocol +
+        '//' +
+        locationData.hostname +
+        (locationData.port ? ':' + locationData.port : '') +
+        locationData.pathname.split('/').slice(0, 1 + pathSegmentsToKeep).join('/') +
+        '/?/' +
+        redirectPath.slice(pathSegmentsToKeep ? redirectPath.split('/').slice(0, pathSegmentsToKeep).join('/').length + 1 : 0)
+          .replace(/&/g, '~and~') +
+        (locationData.search ? '&' + locationData.search.slice(1).replace(/&/g, '~and~') : '') +
+        locationData.hash;
+
+      location.replace(redirectUrl);
+    </script>
+  </head>
+  <body></body>
+</html>

@@ -159,7 +159,7 @@ function App() {
     <ThemeProvider theme={theme}>
       <CssBaseline />
       <AuthProvider>
-        <Router>
+        <Router basename={process.env.PUBLIC_URL}>
           <Navbar />
           <Box className="app-shell">
             <Routes>
