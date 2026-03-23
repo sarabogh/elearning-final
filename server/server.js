@@ -7,6 +7,8 @@ const socketIo = require('socket.io');
 const path = require('path');
 const dns = require('dns');
 const jwt = require('jsonwebtoken');
+const helmet = require('helmet');
+const rateLimit = require('express-rate-limit');
 
 dotenv.config();
 
@@ -15,12 +17,27 @@ dotenv.config();
 dns.setServers(['8.8.8.8', '8.8.4.4']);
 
 const app = express();
+
+const defaultOrigins = ['http://localhost:3000'];
+const allowedOrigins = (process.env.CORS_ORIGIN || process.env.CLIENT_ORIGIN || defaultOrigins.join(','))
+  .split(',')
+  .map((origin) => origin.trim())
+  .filter(Boolean);
+
+const corsOptions = {
+  origin(origin, callback) {
+    if (!origin || allowedOrigins.includes(origin)) {
+      return callback(null, true);
+    }
+    return callback(new Error('Not allowed by CORS'));
+  },
+  credentials: true,
+  methods: ['GET', 'POST', 'PUT', 'DELETE']
+};
+
 const server = http.createServer(app);
 const io = socketIo(server, {
-  cors: {
-    origin: "http://localhost:3000",
-    methods: ["GET", "POST", "PUT", "DELETE"]
-  }
+  cors: corsOptions
 });
 
 io.use((socket, next) => {
@@ -39,9 +56,18 @@ io.use((socket, next) => {
 });
 
 // Middleware
-app.use(cors());
+app.use(helmet({ crossOriginResourcePolicy: false }));
+app.use(cors(corsOptions));
 app.use(express.json());
 app.use(express.urlencoded({ extended: true }));
+
+const authLimiter = rateLimit({
+  windowMs: 15 * 60 * 1000,
+  max: 100,
+  standardHeaders: true,
+  legacyHeaders: false,
+  message: { message: 'Too many authentication attempts. Please try again later.' }
+});
 
 // Serve static files from uploads directory
 app.use('/uploads', express.static(path.join(__dirname, process.env.UPLOAD_PATH || 'uploads')));
@@ -99,7 +125,7 @@ io.on('connection', (socket) => {
 });
 
 // Routes
-app.use('/api/auth', require('./routes/auth'));
+app.use('/api/auth', authLimiter, require('./routes/auth'));
 app.use('/api/courses', require('./routes/courses'));
 app.use('/api/users', require('./routes/users'));
 app.use('/api/uploads', require('./routes/uploads'));
@@ -109,6 +135,23 @@ app.use('/api/calendar-events', require('./routes/calendarEvents'));
 
 app.get('/', (req, res) => {
   res.send('eLearning API is running');
+});
+
+app.use((err, req, res, next) => {
+  if (!err) {
+    return next();
+  }
+
+  if (err.name === 'MulterError') {
+    return res.status(400).json({ message: err.message || 'Upload failed' });
+  }
+
+  if (err.message === 'Not allowed by CORS') {
+    return res.status(403).json({ message: 'Origin not allowed' });
+  }
+
+  console.error(err);
+  return res.status(err.status || 500).json({ message: err.message || 'Server error' });
 });
 
 // Start server

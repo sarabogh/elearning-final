@@ -611,12 +611,6 @@ const Dashboard = () => {
             >
               Create New Course
             </Button>
-            <Button
-              variant="outlined"
-              onClick={() => navigate('/faculty-dashboard')}
-            >
-              Open Faculty Dashboard
-            </Button>
           </Stack>
         </Box>
       ) : (

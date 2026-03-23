@@ -12,6 +12,8 @@ const isApprovedLearner = (course, learnerId) => {
   );
 };
 
+const allowedCourseUpdateFields = ['title', 'description', 'category', 'level', 'duration', 'price', 'thumbnail'];
+
 const getUserEnrollment = async (userId, courseId) => {
   const user = await User.findById(userId);
   if (!user) return null;
@@ -217,9 +219,16 @@ const updateCourse = async (req, res) => {
       return res.status(403).json({ message: 'Access denied' });
     }
 
+    const updates = allowedCourseUpdateFields.reduce((acc, field) => {
+      if (Object.prototype.hasOwnProperty.call(req.body, field)) {
+        acc[field] = req.body[field];
+      }
+      return acc;
+    }, {});
+
     const updatedCourse = await Course.findByIdAndUpdate(
       req.params.id,
-      { ...req.body, updatedAt: Date.now() },
+      { ...updates, updatedAt: Date.now() },
       { new: true }
     );
 
@@ -1223,6 +1232,7 @@ const getLessons = async (req, res) => {
 const submitRating = async (req, res) => {
   try {
     const { rating, review } = req.body;
+    const numericRating = Number(rating);
     const course = await Course.findById(req.params.id);
 
     if (!course) {
@@ -1237,13 +1247,21 @@ const submitRating = async (req, res) => {
       return res.status(403).json({ message: 'Must be enrolled to rate' });
     }
 
+    if (!Number.isFinite(numericRating) || numericRating < 1 || numericRating > 5) {
+      return res.status(400).json({ message: 'Rating must be a number between 1 and 5' });
+    }
+
+    if (review && review.length > 500) {
+      return res.status(400).json({ message: 'Review must be 500 characters or less' });
+    }
+
     const existingRating = (course.ratings || []).find((r) => r.student.toString() === req.user.id);
 
     if (existingRating) {
-      existingRating.rating = rating;
+      existingRating.rating = numericRating;
       existingRating.review = review;
     } else {
-      course.ratings.push({ student: req.user.id, rating, review });
+      course.ratings.push({ student: req.user.id, rating: numericRating, review });
     }
 
     const totalRating = (course.ratings || []).reduce((sum, r) => sum + r.rating, 0);

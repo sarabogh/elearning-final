@@ -1,5 +1,6 @@
 const express = require('express');
 const User = require('../models/User');
+const Course = require('../models/Course');
 const { auth, authorize } = require('../middleware/auth');
 
 const router = express.Router();
@@ -17,6 +18,28 @@ router.get('/', auth, authorize('admin'), async (req, res) => {
 // Get user by ID
 router.get('/:id', auth, async (req, res) => {
   try {
+    const isSelf = req.user.id === req.params.id;
+    const isAdmin = req.user.role === 'admin';
+
+    let teachesTargetLearner = false;
+    if (!isSelf && !isAdmin) {
+      const sharedCourse = await Course.findOne({
+        instructor: req.user.id,
+        enrolledStudents: {
+          $elemMatch: {
+            student: req.params.id,
+            status: 'approved'
+          }
+        }
+      }).select('_id');
+
+      teachesTargetLearner = Boolean(sharedCourse);
+    }
+
+    if (!isSelf && !isAdmin && !teachesTargetLearner) {
+      return res.status(403).json({ message: 'Access denied' });
+    }
+
     const user = await User.findById(req.params.id).select('-password');
     if (!user) {
       return res.status(404).json({ message: 'User not found' });

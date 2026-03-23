@@ -141,6 +141,15 @@ describe('Authorization and access control', () => {
     expect(res.body.message).toBe('Invalid token');
   });
 
+  it('rejects invalid registration payloads', async () => {
+    const res = await request(app)
+      .post('/api/auth/register')
+      .send({ name: 'ab', email: 'not-an-email', password: 'weak', role: 'faculty' });
+
+    expect(res.statusCode).toBe(400);
+    expect(Array.isArray(res.body.errors)).toBe(true);
+  });
+
   it('blocks learner from faculty/admin course creation route', async () => {
     const res = await request(app)
       .post('/api/courses')
@@ -162,6 +171,17 @@ describe('Authorization and access control', () => {
     const res = await request(app)
       .get('/api/users')
       .set(authHeader(ownerFacultyToken));
+
+    expect(res.statusCode).toBe(403);
+    expect(res.body.message).toBe('Access denied');
+  });
+
+  it('blocks learner from viewing another user profile', async () => {
+    const ownerProfile = await User.findOne({ email: ownerFacultyEmail }).lean();
+
+    const res = await request(app)
+      .get(`/api/users/${ownerProfile._id}`)
+      .set(authHeader(learnerToken));
 
     expect(res.statusCode).toBe(403);
     expect(res.body.message).toBe('Access denied');
@@ -220,5 +240,14 @@ describe('Authorization and access control', () => {
       .set(authHeader(otherFacultyToken));
     expect(otherFacultyReopenAttempt.statusCode).toBe(403);
     expect(otherFacultyReopenAttempt.body.message).toBe('Access denied');
+  });
+
+  it('allows course owner faculty to view approved learner profile for teaching analytics', async () => {
+    const res = await request(app)
+      .get(`/api/users/${learnerId}`)
+      .set(authHeader(ownerFacultyToken));
+
+    expect(res.statusCode).toBe(200);
+    expect(res.body._id.toString()).toBe(learnerId.toString());
   });
 });

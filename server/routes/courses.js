@@ -41,16 +41,31 @@ const { auth, authorize } = require('../middleware/auth');
 
 const router = express.Router();
 
+const escapeRegex = (value = '') => value.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
+
 // Search and filter courses
 router.get('/search/query', async (req, res) => {
   try {
     const { search, category, level, instructor } = req.query;
     let filter = { isPublished: true };
 
+    if (search && search.length > 100) {
+      return res.status(400).json({ message: 'Search term must be 100 characters or less' });
+    }
+
+    if (category && category.length > 80) {
+      return res.status(400).json({ message: 'Category filter is too long' });
+    }
+
+    if (level && !['beginner', 'intermediate', 'advanced'].includes(level)) {
+      return res.status(400).json({ message: 'Invalid level filter' });
+    }
+
     if (search) {
+      const safeSearch = escapeRegex(search.trim());
       filter.$or = [
-        { title: { $regex: search, $options: 'i' } },
-        { description: { $regex: search, $options: 'i' } }
+        { title: { $regex: safeSearch, $options: 'i' } },
+        { description: { $regex: safeSearch, $options: 'i' } }
       ];
     }
 

@@ -13,8 +13,6 @@ import CreateCourse from './pages/CreateCourse';
 import EditCourse from './pages/EditCourse';
 import Profile from './pages/Profile';
 import AdminDashboard from './pages/AdminDashboard';
-import FacultyDashboard from './pages/FacultyDashboard';
-import LearnerDashboard from './pages/LearnerDashboard';
 import CourseSearch from './pages/CourseSearch';
 import { AuthProvider } from './context/AuthContext';
 
@@ -174,8 +172,6 @@ function App() {
               <Route path="/course/:id/edit" element={<EditCourse />} />
               <Route path="/profile" element={<Profile />} />
               <Route path="/admin" element={<AdminDashboard />} />
-              <Route path="/faculty-dashboard" element={<FacultyDashboard />} />
-              <Route path="/learner-dashboard" element={<LearnerDashboard />} />
               <Route path="/search" element={<CourseSearch />} />
             </Routes>
           </Box>
